@@ -5,7 +5,7 @@
 Shared vault utilities for the Flywheel ecosystem.
 
 [![npm version](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ---
 
@@ -134,4 +134,4 @@ Wikilinks are only applied in safe zones—never inside code, frontmatter, or ex
 
 ---
 
-AGPL-3.0 License · [GitHub](https://github.com/velvetmonkey/vault-core) · [Issues](https://github.com/velvetmonkey/vault-core/issues)
+Apache-2.0 License · [GitHub](https://github.com/velvetmonkey/vault-core) · [Issues](https://github.com/velvetmonkey/vault-core/issues)
