@@ -5,8 +5,15 @@
  * respecting protected zones (code, frontmatter, existing links, etc.)
  */
 
-import type { WikilinkOptions, WikilinkResult } from './types.js';
+import type { WikilinkOptions, WikilinkResult, Entity } from './types.js';
 import { getProtectedZones, rangeOverlapsProtectedZone } from './protectedZones.js';
+
+/**
+ * Get entity name from Entity (handles both string and object formats)
+ */
+function extractEntityName(entity: Entity): string {
+  return typeof entity === 'string' ? entity : entity.name;
+}
 
 /**
  * Common words to exclude from wikilink suggestions
@@ -64,13 +71,13 @@ function findEntityMatches(
  * Apply wikilinks to entities in content
  *
  * @param content - The markdown content to process
- * @param entities - List of entity names to look for
+ * @param entities - List of entity names or Entity objects to look for
  * @param options - Wikilink options
  * @returns Result with updated content and statistics
  */
 export function applyWikilinks(
   content: string,
-  entities: string[],
+  entities: Entity[],
   options: WikilinkOptions = {}
 ): WikilinkResult {
   const {
@@ -86,9 +93,10 @@ export function applyWikilinks(
     };
   }
 
-  // Filter out excluded words and sort by length (longest first)
+  // Extract entity names, filter out excluded words, and sort by length (longest first)
   // to avoid partial matches (e.g., "API Management" before "API")
   const sortedEntities = entities
+    .map(e => extractEntityName(e))
     .filter(e => !shouldExcludeEntity(e))
     .sort((a, b) => b.length - a.length);
 
@@ -158,7 +166,7 @@ export function applyWikilinks(
  */
 export function suggestWikilinks(
   content: string,
-  entities: string[],
+  entities: Entity[],
   options: WikilinkOptions = {}
 ): Array<{ entity: string; start: number; end: number; context: string }> {
   const {
@@ -177,8 +185,9 @@ export function suggestWikilinks(
     return suggestions;
   }
 
-  // Filter and sort entities
+  // Extract entity names, filter and sort
   const sortedEntities = entities
+    .map(e => extractEntityName(e))
     .filter(e => !shouldExcludeEntity(e))
     .sort((a, b) => b.length - a.length);
 

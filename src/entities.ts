@@ -8,7 +8,24 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import type { EntityIndex, EntityCategory, ScanOptions } from './types.js';
+import type { EntityIndex, EntityCategory, ScanOptions, EntityWithAliases, Entity } from './types.js';
+
+/**
+ * Current cache version - bump when schema changes
+ */
+export const ENTITY_CACHE_VERSION = 2;
+
+/**
+ * Maximum entity name/alias length for suggestions
+ * Filters out article titles, clippings, and other long names
+ */
+const MAX_ENTITY_LENGTH = 25;
+
+/**
+ * Maximum word count for entity names/aliases
+ * Concepts are typically 1-3 words; longer names are article titles
+ */
+const MAX_ENTITY_WORDS = 3;
 
 /**
  * Default patterns for filtering out periodic notes and system files
@@ -39,6 +56,94 @@ const DEFAULT_TECH_KEYWORDS = [
   'javascript', 'python', 'docker', 'kubernetes',
   'adf', 'adb', 'net', 'aws', 'gcp', 'terraform',
 ];
+
+/**
+ * Check if an alias passes the length and word count filters
+ * Uses same rules as entity names: ≤25 chars, ≤3 words
+ */
+function isValidAlias(alias: string): boolean {
+  if (typeof alias !== 'string' || alias.length === 0) {
+    return false;
+  }
+
+  // Length filter
+  if (alias.length > MAX_ENTITY_LENGTH) {
+    return false;
+  }
+
+  // Word count filter
+  const words = alias.split(/\s+/).filter(w => w.length > 0);
+  if (words.length > MAX_ENTITY_WORDS) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Parse frontmatter from markdown content and extract aliases
+ * Handles YAML array format: aliases: [Alias1, Alias2]
+ * And YAML list format:
+ *   aliases:
+ *     - Alias1
+ *     - Alias2
+ */
+function extractAliasesFromContent(content: string): string[] {
+  // Check for frontmatter delimiter
+  if (!content.startsWith('---')) {
+    return [];
+  }
+
+  // Find end of frontmatter
+  const endIndex = content.indexOf('\n---', 3);
+  if (endIndex === -1) {
+    return [];
+  }
+
+  const frontmatter = content.substring(4, endIndex);
+
+  // Try inline array format: aliases: [Alias1, Alias2]
+  const inlineMatch = frontmatter.match(/^aliases:\s*\[([^\]]*)\]/m);
+  if (inlineMatch) {
+    return inlineMatch[1]
+      .split(',')
+      .map(s => s.trim().replace(/^["']|["']$/g, '')) // Remove quotes
+      .filter(s => s.length > 0 && isValidAlias(s));
+  }
+
+  // Try multiline list format
+  const lines = frontmatter.split('\n');
+  const aliasIdx = lines.findIndex(line => /^aliases:\s*$/.test(line));
+  if (aliasIdx === -1) {
+    // Check for single value format: aliases: SingleAlias
+    const singleMatch = frontmatter.match(/^aliases:\s+(.+)$/m);
+    if (singleMatch && !singleMatch[1].startsWith('[')) {
+      const alias = singleMatch[1].trim().replace(/^["']|["']$/g, '');
+      return isValidAlias(alias) ? [alias] : [];
+    }
+    return [];
+  }
+
+  // Parse list items following "aliases:"
+  const aliases: string[] = [];
+  for (let i = aliasIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // Stop at next top-level key or empty line
+    if (/^[a-z_]+:/i.test(line) || line.trim() === '') {
+      break;
+    }
+    // Match list item: - Alias or - "Alias"
+    const listMatch = line.match(/^\s*-\s*["']?(.+?)["']?\s*$/);
+    if (listMatch) {
+      const alias = listMatch[1].trim();
+      if (isValidAlias(alias)) {
+        aliases.push(alias);
+      }
+    }
+  }
+
+  return aliases;
+}
 
 /**
  * Check if a file/folder name should be skipped (dot-prefixed)
@@ -87,13 +192,26 @@ function categorizeEntity(
 }
 
 /**
+ * Entity info collected during scanning
+ */
+interface ScannedEntity {
+  name: string;
+  relativePath: string;
+  aliases: string[];
+}
+
+/**
  * Recursively scan a directory for markdown files
+ * @param dirPath - Absolute path to scan
+ * @param basePath - Vault root path (for relative path calculation)
+ * @param excludeFolders - Folders to skip
  */
 async function scanDirectory(
   dirPath: string,
+  basePath: string,
   excludeFolders: string[]
-): Promise<string[]> {
-  const entities: string[] = [];
+): Promise<ScannedEntity[]> {
+  const entities: ScannedEntity[] = [];
 
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -115,12 +233,27 @@ async function scanDirectory(
 
       if (entry.isDirectory()) {
         // Recurse into subdirectory
-        const subEntities = await scanDirectory(fullPath, excludeFolders);
+        const subEntities = await scanDirectory(fullPath, basePath, excludeFolders);
         entities.push(...subEntities);
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
         // Extract file stem (without .md extension)
         const stem = path.basename(entry.name, '.md');
-        entities.push(stem);
+        const relativePath = path.relative(basePath, fullPath);
+
+        // Read file content to extract aliases
+        let aliases: string[] = [];
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          aliases = extractAliasesFromContent(content);
+        } catch {
+          // Skip if can't read file - just use empty aliases
+        }
+
+        entities.push({
+          name: stem,
+          relativePath,
+          aliases,
+        });
       }
     }
   } catch (error) {
@@ -142,15 +275,22 @@ export async function scanVaultEntities(
   const techKeywords = options.techKeywords ?? DEFAULT_TECH_KEYWORDS;
 
   // Scan vault for all markdown files
-  const allEntities = await scanDirectory(vaultPath, excludeFolders);
+  const allEntities = await scanDirectory(vaultPath, vaultPath, excludeFolders);
 
   // Filter out periodic notes and invalid entries
   const validEntities = allEntities.filter(entity =>
-    entity.length >= 2 && !matchesExcludePattern(entity)
+    entity.name.length >= 2 && !matchesExcludePattern(entity.name)
   );
 
-  // Remove duplicates
-  const uniqueEntities = [...new Set(validEntities)];
+  // Remove duplicates by name (keep first occurrence)
+  const seenNames = new Set<string>();
+  const uniqueEntities = validEntities.filter(entity => {
+    if (seenNames.has(entity.name.toLowerCase())) {
+      return false;
+    }
+    seenNames.add(entity.name.toLowerCase());
+    return true;
+  });
 
   // Categorize entities
   const index: EntityIndex = {
@@ -164,20 +304,32 @@ export async function scanVaultEntities(
       generated_at: new Date().toISOString(),
       vault_path: vaultPath,
       source: 'vault-core scanVaultEntities',
+      version: ENTITY_CACHE_VERSION,
     },
   };
 
   for (const entity of uniqueEntities) {
-    const category = categorizeEntity(entity, techKeywords);
-    index[category].push(entity);
+    const category = categorizeEntity(entity.name, techKeywords);
+    // Store as EntityWithAliases object
+    const entityObj: EntityWithAliases = {
+      name: entity.name,
+      path: entity.relativePath,
+      aliases: entity.aliases,
+    };
+    index[category].push(entityObj);
   }
 
-  // Sort each category
-  index.technologies.sort();
-  index.acronyms.sort();
-  index.people.sort();
-  index.projects.sort();
-  index.other.sort();
+  // Sort each category by name
+  const sortByName = (a: Entity, b: Entity) => {
+    const nameA = typeof a === 'string' ? a : a.name;
+    const nameB = typeof b === 'string' ? b : b.name;
+    return nameA.localeCompare(nameB);
+  };
+  index.technologies.sort(sortByName);
+  index.acronyms.sort(sortByName);
+  index.people.sort(sortByName);
+  index.projects.sort(sortByName);
+  index.other.sort(sortByName);
 
   // Update metadata
   index._metadata.total_entities =
@@ -192,8 +344,9 @@ export async function scanVaultEntities(
 
 /**
  * Get all entities as a flat array (for wikilink matching)
+ * Handles both legacy string format and new EntityWithAliases format
  */
-export function getAllEntities(index: EntityIndex): string[] {
+export function getAllEntities(index: EntityIndex): Entity[] {
   return [
     ...index.technologies,
     ...index.acronyms,
@@ -201,6 +354,20 @@ export function getAllEntities(index: EntityIndex): string[] {
     ...index.projects,
     ...index.other,
   ];
+}
+
+/**
+ * Get entity name from an Entity (handles both string and object formats)
+ */
+export function getEntityName(entity: Entity): string {
+  return typeof entity === 'string' ? entity : entity.name;
+}
+
+/**
+ * Get entity aliases from an Entity (returns empty array for strings)
+ */
+export function getEntityAliases(entity: Entity): string[] {
+  return typeof entity === 'string' ? [] : entity.aliases;
 }
 
 /**

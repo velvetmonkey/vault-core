@@ -6,19 +6,37 @@
  */
 export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'other';
 /**
+ * Entity with optional aliases from frontmatter
+ */
+export interface EntityWithAliases {
+    /** Primary entity name (file stem) */
+    name: string;
+    /** Relative path to the file within vault */
+    path: string;
+    /** Aliases from frontmatter (filtered by length/word count) */
+    aliases: string[];
+}
+/**
+ * Entity can be either a simple string (legacy) or full object with aliases
+ */
+export type Entity = string | EntityWithAliases;
+/**
  * Entity index structure matching wikilink-cache.py output
+ * Now supports both string[] (legacy) and EntityWithAliases[] (v2)
  */
 export interface EntityIndex {
-    technologies: string[];
-    acronyms: string[];
-    people: string[];
-    projects: string[];
-    other: string[];
+    technologies: Entity[];
+    acronyms: Entity[];
+    people: Entity[];
+    projects: Entity[];
+    other: Entity[];
     _metadata: {
         total_entities: number;
         generated_at: string;
         vault_path: string;
         source: string;
+        /** Cache version for migration detection */
+        version?: number;
     };
 }
 /**

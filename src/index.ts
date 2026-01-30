@@ -9,6 +9,8 @@
 export type {
   EntityIndex,
   EntityCategory,
+  EntityWithAliases,
+  Entity,
   ProtectedZone,
   ProtectedZoneType,
   ScanOptions,
@@ -20,9 +22,12 @@ export type {
 export {
   scanVaultEntities,
   getAllEntities,
+  getEntityName,
+  getEntityAliases,
   filterPeriodicNotes,
   loadEntityCache,
   saveEntityCache,
+  ENTITY_CACHE_VERSION,
 } from './entities.js';
 
 // Protected zones
