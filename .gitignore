@@ -27,3 +27,7 @@ coverage/
 # Strategic planning documents - keep private
 ROADMAP.md
 ROADMAP*.md
+
+# Claude context files (private to local machine)
+CLAUDE.md
+CLAUDE*.md
