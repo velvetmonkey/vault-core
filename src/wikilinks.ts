@@ -136,9 +136,6 @@ export function applyWikilinks(
   let linksAdded = 0;
   const linkedEntities: string[] = [];
 
-  // Track which entities have been linked (for firstOccurrenceOnly)
-  const linkedEntityNames = new Set<string>();
-
   if (firstOccurrenceOnly) {
     // For firstOccurrenceOnly mode, we need to find the earliest match across
     // all terms (name + aliases) for each entity, then link that one
@@ -171,7 +168,7 @@ export function applyWikilinks(
     }
 
     // Sort each entity's matches by position
-    for (const [entityKey, matches] of entityAllMatches.entries()) {
+    for (const [_entityKey, matches] of entityAllMatches.entries()) {
       matches.sort((a, b) => a.match.start - b.match.start);
     }
 
@@ -223,7 +220,7 @@ export function applyWikilinks(
     // Sort by position from end to start to preserve offsets when inserting
     selectedMatches.sort((a, b) => b.match.start - a.match.start);
 
-    for (const { entityName, term, match } of selectedMatches) {
+    for (const { entityName, term: _term, match } of selectedMatches) {
       // Use display text format when matched text differs from entity name
       const matchedTextLower = match.matched.toLowerCase();
       const entityNameLower = entityName.toLowerCase();
