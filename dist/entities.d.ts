@@ -5,11 +5,11 @@
  * that can be wikilinked. Filters out periodic notes and categorizes
  * entities by type.
  */
-import type { EntityIndex, ScanOptions, Entity } from './types.js';
+import type { EntityIndex, ScanOptions, Entity, EntityWithType } from './types.js';
 /**
  * Current cache version - bump when schema changes
  */
-export declare const ENTITY_CACHE_VERSION = 2;
+export declare const ENTITY_CACHE_VERSION = 3;
 /**
  * Scan vault for entities (markdown file stems) that can be wikilinked
  */
@@ -19,6 +19,17 @@ export declare function scanVaultEntities(vaultPath: string, options?: ScanOptio
  * Handles both legacy string format and new EntityWithAliases format
  */
 export declare function getAllEntities(index: EntityIndex): Entity[];
+/**
+ * Get all entities with their category type preserved
+ * Used for scoring algorithms that need type-based boosts
+ *
+ * Unlike getAllEntities() which flattens entities into a single array,
+ * this function preserves the category information for each entity.
+ *
+ * @param index - The entity index to extract from
+ * @returns Array of EntityWithType objects preserving category info
+ */
+export declare function getAllEntitiesWithTypes(index: EntityIndex): EntityWithType[];
 /**
  * Get entity name from an Entity (handles both string and object formats)
  */

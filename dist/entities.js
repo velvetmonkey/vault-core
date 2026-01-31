@@ -10,7 +10,7 @@ import path from 'path';
 /**
  * Current cache version - bump when schema changes
  */
-export const ENTITY_CACHE_VERSION = 2;
+export const ENTITY_CACHE_VERSION = 3;
 /**
  * Maximum entity name/alias length for suggestions
  * Filters out article titles, clippings, and other long names
@@ -42,12 +42,22 @@ const DEFAULT_EXCLUDE_PATTERNS = [
  * Default tech keywords for categorization
  */
 const DEFAULT_TECH_KEYWORDS = [
+    // Core technologies (28 original)
     'databricks', 'api', 'code', 'azure', 'sql', 'git',
     'node', 'react', 'powerbi', 'excel', 'copilot',
     'fabric', 'apim', 'endpoint', 'synology', 'tailscale',
     'obsidian', 'claude', 'powershell', 'mcp', 'typescript',
     'javascript', 'python', 'docker', 'kubernetes',
     'adf', 'adb', 'net', 'aws', 'gcp', 'terraform',
+    // AI/ML (16 new - target audience)
+    'chatgpt', 'langchain', 'openai', 'huggingface', 'pytorch', 'tensorflow',
+    'anthropic', 'llm', 'embedding', 'vector', 'rag', 'prompt', 'agent',
+    'transformer', 'ollama', 'gemini',
+    // Languages (10 new)
+    'swift', 'kotlin', 'rust', 'golang', 'elixir', 'scala', 'julia',
+    'ruby', 'php', 'csharp',
+    // Infrastructure (8 new)
+    'ansible', 'nginx', 'redis', 'postgres', 'mongodb', 'graphql', 'grpc', 'kafka',
 ];
 /**
  * Check if an alias passes the length and word count filters
@@ -139,23 +149,64 @@ function matchesExcludePattern(name) {
     return DEFAULT_EXCLUDE_PATTERNS.some(pattern => pattern.test(name));
 }
 /**
+ * Organization suffixes for company/team detection
+ */
+const ORG_SUFFIXES = ['inc', 'corp', 'llc', 'ltd', 'team', 'group', 'co', 'company'];
+/**
+ * Location keywords for place detection
+ */
+const LOCATION_KEYWORDS = ['city', 'county', 'region', 'district', 'province'];
+/**
+ * Known region patterns (geographic regions)
+ */
+const REGION_PATTERNS = ['eu', 'apac', 'emea', 'latam', 'amer'];
+/**
  * Categorize an entity based on its name
+ *
+ * Detection order (most specific first):
+ * 1. Technologies - matches tech keyword
+ * 2. Acronyms - all uppercase 2-6 chars
+ * 3. Organizations - ends with company/team suffixes
+ * 4. Locations - city/country patterns or known regions
+ * 5. People - exactly 2 capitalized words
+ * 6. Concepts - multi-word lowercase patterns
+ * 7. Projects - multi-word (fallback)
+ * 8. Other - single word default
  */
 function categorizeEntity(name, techKeywords) {
     const nameLower = name.toLowerCase();
-    // Technology check
+    const words = name.split(/\s+/);
+    // 1. Technology check (keyword match)
     if (techKeywords.some(tech => nameLower.includes(tech))) {
         return 'technologies';
     }
-    // Acronym check (2-6 uppercase letters)
+    // 2. Acronym check (all uppercase, 2-6 chars)
     if (name === name.toUpperCase() && name.length >= 2 && name.length <= 6) {
         return 'acronyms';
     }
-    // People check (two words, capitalized)
-    if (name.includes(' ') && name.split(' ').length === 2) {
-        return 'people';
+    // 3. Organization check (company/team suffixes)
+    if (words.length >= 2 && ORG_SUFFIXES.includes(words[words.length - 1].toLowerCase())) {
+        return 'organizations';
     }
-    // Projects check (multi-word)
+    // 4. Location check (city/country patterns or known regions)
+    if (words.length >= 2 && LOCATION_KEYWORDS.includes(words[words.length - 1].toLowerCase())) {
+        return 'locations';
+    }
+    if (REGION_PATTERNS.includes(nameLower)) {
+        return 'locations';
+    }
+    // 5. People check (exactly 2 words, both capitalized)
+    if (words.length === 2) {
+        const [first, last] = words;
+        if (first[0] === first[0].toUpperCase() && last[0] === last[0].toUpperCase()) {
+            return 'people';
+        }
+    }
+    // 6. Concepts check (multi-word lowercase patterns like "machine learning")
+    if (words.length >= 2 && name === name.toLowerCase()) {
+        return 'concepts';
+    }
+    // 7. Projects (multi-word, capitalized, not people)
     if (name.includes(' ')) {
         return 'projects';
     }
@@ -238,6 +289,9 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         acronyms: [],
         people: [],
         projects: [],
+        organizations: [],
+        locations: [],
+        concepts: [],
         other: [],
         _metadata: {
             total_entities: 0,
@@ -267,6 +321,9 @@ export async function scanVaultEntities(vaultPath, options = {}) {
     index.acronyms.sort(sortByName);
     index.people.sort(sortByName);
     index.projects.sort(sortByName);
+    index.organizations.sort(sortByName);
+    index.locations.sort(sortByName);
+    index.concepts.sort(sortByName);
     index.other.sort(sortByName);
     // Update metadata
     index._metadata.total_entities =
@@ -274,6 +331,9 @@ export async function scanVaultEntities(vaultPath, options = {}) {
             index.acronyms.length +
             index.people.length +
             index.projects.length +
+            index.organizations.length +
+            index.locations.length +
+            index.concepts.length +
             index.other.length;
     return index;
 }
@@ -287,8 +347,49 @@ export function getAllEntities(index) {
         ...index.acronyms,
         ...index.people,
         ...index.projects,
+        ...index.organizations,
+        ...index.locations,
+        ...index.concepts,
         ...index.other,
     ];
+}
+/**
+ * Get all entities with their category type preserved
+ * Used for scoring algorithms that need type-based boosts
+ *
+ * Unlike getAllEntities() which flattens entities into a single array,
+ * this function preserves the category information for each entity.
+ *
+ * @param index - The entity index to extract from
+ * @returns Array of EntityWithType objects preserving category info
+ */
+export function getAllEntitiesWithTypes(index) {
+    const result = [];
+    const categories = [
+        'technologies',
+        'acronyms',
+        'people',
+        'projects',
+        'organizations',
+        'locations',
+        'concepts',
+        'other',
+    ];
+    for (const category of categories) {
+        const entities = index[category];
+        // Skip undefined or empty categories
+        if (!entities || !Array.isArray(entities)) {
+            continue;
+        }
+        for (const entity of entities) {
+            // Convert legacy string format to EntityWithAliases
+            const entityObj = typeof entity === 'string'
+                ? { name: entity, path: '', aliases: [] }
+                : entity;
+            result.push({ entity: entityObj, category });
+        }
+    }
+    return result;
 }
 /**
  * Get entity name from an Entity (handles both string and object formats)

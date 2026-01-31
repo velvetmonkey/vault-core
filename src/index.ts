@@ -11,6 +11,7 @@ export type {
   EntityCategory,
   EntityWithAliases,
   Entity,
+  EntityWithType,
   ProtectedZone,
   ProtectedZoneType,
   ScanOptions,
@@ -22,6 +23,7 @@ export type {
 export {
   scanVaultEntities,
   getAllEntities,
+  getAllEntitiesWithTypes,
   getEntityName,
   getEntityAliases,
   filterPeriodicNotes,

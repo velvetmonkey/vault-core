@@ -10,6 +10,9 @@ export type EntityCategory =
   | 'acronyms'
   | 'people'
   | 'projects'
+  | 'organizations'
+  | 'locations'
+  | 'concepts'
   | 'other';
 
 /**
@@ -30,6 +33,15 @@ export interface EntityWithAliases {
 export type Entity = string | EntityWithAliases;
 
 /**
+ * Entity with its category type for scoring algorithms
+ * Preserves type information that getAllEntities() loses by flattening
+ */
+export interface EntityWithType {
+  entity: EntityWithAliases;
+  category: EntityCategory;
+}
+
+/**
  * Entity index structure matching wikilink-cache.py output
  * Now supports both string[] (legacy) and EntityWithAliases[] (v2)
  */
@@ -38,6 +50,9 @@ export interface EntityIndex {
   acronyms: Entity[];
   people: Entity[];
   projects: Entity[];
+  organizations: Entity[];
+  locations: Entity[];
+  concepts: Entity[];
   other: Entity[];
   _metadata: {
     total_entities: number;
