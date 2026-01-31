@@ -12,6 +12,23 @@ function extractEntityName(entity) {
     return typeof entity === 'string' ? entity : entity.name;
 }
 /**
+ * Get all search terms for an entity (name + aliases)
+ * Returns tuples of [searchTerm, entityName] for proper linking
+ */
+function getSearchTerms(entity) {
+    if (typeof entity === 'string') {
+        return [{ term: entity, entityName: entity }];
+    }
+    // Include the entity name and all aliases
+    const terms = [
+        { term: entity.name, entityName: entity.name }
+    ];
+    for (const alias of entity.aliases) {
+        terms.push({ term: alias, entityName: entity.name });
+    }
+    return terms;
+}
+/**
  * Common words to exclude from wikilink suggestions
  */
 const EXCLUDE_WORDS = new Set([
@@ -69,32 +86,94 @@ export function applyWikilinks(content, entities, options = {}) {
             linkedEntities: [],
         };
     }
-    // Extract entity names, filter out excluded words, and sort by length (longest first)
-    // to avoid partial matches (e.g., "API Management" before "API")
-    const sortedEntities = entities
-        .map(e => extractEntityName(e))
-        .filter(e => !shouldExcludeEntity(e))
-        .sort((a, b) => b.length - a.length);
+    // Build search terms from all entities (names + aliases)
+    // Each term maps back to its canonical entity name
+    const allSearchTerms = [];
+    for (const entity of entities) {
+        const terms = getSearchTerms(entity);
+        for (const t of terms) {
+            if (!shouldExcludeEntity(t.term)) {
+                allSearchTerms.push(t);
+            }
+        }
+    }
+    // Sort by term length (longest first) to avoid partial matches
+    allSearchTerms.sort((a, b) => b.term.length - a.term.length);
     // Get protected zones
     let zones = getProtectedZones(content);
     let result = content;
     let linksAdded = 0;
     const linkedEntities = [];
-    for (const entity of sortedEntities) {
-        // Find all matches
-        const matches = findEntityMatches(result, entity, caseInsensitive);
-        // Filter out matches in protected zones
-        const validMatches = matches.filter(match => !rangeOverlapsProtectedZone(match.start, match.end, zones));
-        if (validMatches.length === 0) {
-            continue;
+    if (firstOccurrenceOnly) {
+        // For firstOccurrenceOnly mode, we need to find the earliest match across
+        // all terms (name + aliases) for each entity, then link that one
+        // Also need to handle overlapping matches between different entities
+        // First, collect ALL valid matches for each entity (name + aliases combined)
+        const entityAllMatches = new Map();
+        for (const { term, entityName } of allSearchTerms) {
+            const entityKey = entityName.toLowerCase();
+            // Find all matches of the search term
+            const matches = findEntityMatches(result, term, caseInsensitive);
+            // Filter out matches in protected zones
+            const validMatches = matches.filter(match => !rangeOverlapsProtectedZone(match.start, match.end, zones));
+            if (validMatches.length === 0) {
+                continue;
+            }
+            // Add to entity's matches
+            const existingMatches = entityAllMatches.get(entityKey) || [];
+            for (const match of validMatches) {
+                existingMatches.push({ term, match });
+            }
+            entityAllMatches.set(entityKey, existingMatches);
         }
-        // Determine which matches to process
-        const matchesToProcess = firstOccurrenceOnly
-            ? [validMatches[0]]
-            : [...validMatches].reverse(); // Process from end to start to preserve positions
-        for (const match of matchesToProcess) {
-            // Apply wikilink (use original entity name for consistency)
-            const wikilink = `[[${entity}]]`;
+        // Sort each entity's matches by position
+        for (const [_entityKey, matches] of entityAllMatches.entries()) {
+            matches.sort((a, b) => a.match.start - b.match.start);
+        }
+        // Build final list: for each entity, pick the earliest non-overlapping match
+        // Process entities in order of their earliest match length (longest first for same position)
+        let allCandidates = [];
+        for (const [entityKey, matches] of entityAllMatches.entries()) {
+            // Find the original entityName (with correct casing)
+            const entityName = allSearchTerms.find(t => t.entityName.toLowerCase() === entityKey)?.entityName || entityKey;
+            for (const m of matches) {
+                allCandidates.push({ entityName, ...m });
+            }
+        }
+        // Sort by position, then by match length (descending)
+        allCandidates.sort((a, b) => {
+            if (a.match.start !== b.match.start)
+                return a.match.start - b.match.start;
+            return b.match.matched.length - a.match.matched.length;
+        });
+        // Select non-overlapping matches, preferring longer ones at same position
+        // Each entity gets at most one match
+        const selectedMatches = [];
+        const selectedEntityNames = new Set();
+        for (const candidate of allCandidates) {
+            const entityKey = candidate.entityName.toLowerCase();
+            // Skip if this entity already has a selected match
+            if (selectedEntityNames.has(entityKey)) {
+                continue;
+            }
+            // Check if this overlaps with any already selected match
+            const overlaps = selectedMatches.some(existing => (candidate.match.start >= existing.match.start && candidate.match.start < existing.match.end) ||
+                (candidate.match.end > existing.match.start && candidate.match.end <= existing.match.end) ||
+                (candidate.match.start <= existing.match.start && candidate.match.end >= existing.match.end));
+            if (!overlaps) {
+                selectedMatches.push(candidate);
+                selectedEntityNames.add(entityKey);
+            }
+        }
+        // Sort by position from end to start to preserve offsets when inserting
+        selectedMatches.sort((a, b) => b.match.start - a.match.start);
+        for (const { entityName, term: _term, match } of selectedMatches) {
+            // Use display text format when matched text differs from entity name
+            const matchedTextLower = match.matched.toLowerCase();
+            const entityNameLower = entityName.toLowerCase();
+            const wikilink = matchedTextLower === entityNameLower
+                ? `[[${entityName}]]`
+                : `[[${entityName}|${match.matched}]]`;
             result = result.slice(0, match.start) + wikilink + result.slice(match.end);
             // Update protected zones (shift positions after insertion)
             const shift = wikilink.length - match.matched.length;
@@ -111,8 +190,49 @@ export function applyWikilinks(content, entities, options = {}) {
             });
             zones.sort((a, b) => a.start - b.start);
             linksAdded++;
-            if (!linkedEntities.includes(entity)) {
-                linkedEntities.push(entity);
+            if (!linkedEntities.includes(entityName)) {
+                linkedEntities.push(entityName);
+            }
+        }
+    }
+    else {
+        // For all occurrences mode, process each term
+        for (const { term, entityName } of allSearchTerms) {
+            // Find all matches of the search term
+            const matches = findEntityMatches(result, term, caseInsensitive);
+            // Filter out matches in protected zones
+            const validMatches = matches.filter(match => !rangeOverlapsProtectedZone(match.start, match.end, zones));
+            if (validMatches.length === 0) {
+                continue;
+            }
+            // Process from end to start to preserve positions
+            const matchesToProcess = [...validMatches].reverse();
+            for (const match of matchesToProcess) {
+                // Use display text format when matched text differs from entity name
+                const matchedTextLower = match.matched.toLowerCase();
+                const entityNameLower = entityName.toLowerCase();
+                const wikilink = matchedTextLower === entityNameLower
+                    ? `[[${entityName}]]`
+                    : `[[${entityName}|${match.matched}]]`;
+                result = result.slice(0, match.start) + wikilink + result.slice(match.end);
+                // Update protected zones (shift positions after insertion)
+                const shift = wikilink.length - match.matched.length;
+                zones = zones.map(zone => ({
+                    ...zone,
+                    start: zone.start <= match.start ? zone.start : zone.start + shift,
+                    end: zone.end <= match.start ? zone.end : zone.end + shift,
+                }));
+                // Add new wikilink as protected zone
+                zones.push({
+                    start: match.start,
+                    end: match.start + wikilink.length,
+                    type: 'wikilink',
+                });
+                zones.sort((a, b) => a.start - b.start);
+                linksAdded++;
+                if (!linkedEntities.includes(entityName)) {
+                    linkedEntities.push(entityName);
+                }
             }
         }
     }
