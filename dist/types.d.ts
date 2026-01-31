@@ -15,6 +15,8 @@ export interface EntityWithAliases {
     path: string;
     /** Aliases from frontmatter (filtered by length/word count) */
     aliases: string[];
+    /** Hub score: backlink count for prioritization (set by Flywheel after graph build) */
+    hubScore?: number;
 }
 /**
  * Entity can be either a simple string (legacy) or full object with aliases
