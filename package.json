@@ -1,6 +1,6 @@
 {
   "name": "@velvetmonkey/vault-core",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Shared vault utilities for Flywheel ecosystem (entity scanning, wikilinks, protected zones)",
   "type": "module",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
     "type": "git",
     "url": "git+https://github.com/velvetmonkey/vault-core.git"
   },
-  "author": "velvetmonkey",
+  "author": "Velvet Monkey <9402464+velvetmonkey@users.noreply.github.com>",
   "keywords": [
     "obsidian",
     "wikilinks",
