@@ -158,6 +158,90 @@ Learn React here`;
     expect(result.content).toBe(content);
     expect(result.linksAdded).toBe(0);
   });
+
+  describe('alias matching', () => {
+    it('should match entity via alias and use display text format', () => {
+      const content = 'The PRD is ready for review';
+      const entities = [
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toBe('The [[Product Requirements Document|PRD]] is ready for review');
+      expect(result.linksAdded).toBe(1);
+      expect(result.linkedEntities).toContain('Product Requirements Document');
+    });
+
+    it('should match entity by name without display text', () => {
+      const content = 'The API is documented';
+      const entities = [
+        { name: 'API', path: 'API.md', aliases: ['Application Programming Interface'] }
+      ];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toBe('The [[API]] is documented');
+      expect(result.linksAdded).toBe(1);
+    });
+
+    it('should preserve case in display text when matched via alias', () => {
+      const content = 'Check the prd for details';
+      const entities = [
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const result = applyWikilinks(content, entities, { caseInsensitive: true });
+
+      // Should preserve the original case of the matched text
+      expect(result.content).toBe('Check the [[Product Requirements Document|prd]] for details');
+    });
+
+    it('should handle multiple aliases for same entity', () => {
+      const content = 'The JS framework uses JavaScript internally';
+      const entities = [
+        { name: 'JavaScript', path: 'JavaScript.md', aliases: ['JS', 'ECMAScript'] }
+      ];
+      const result = applyWikilinks(content, entities, { firstOccurrenceOnly: false });
+
+      expect(result.content).toContain('[[JavaScript|JS]]');
+      expect(result.content).toContain('[[JavaScript]]');
+      expect(result.linksAdded).toBe(2);
+    });
+
+    it('should link first occurrence only across name and aliases', () => {
+      const content = 'JS is fun. JavaScript is powerful.';
+      const entities = [
+        { name: 'JavaScript', path: 'JavaScript.md', aliases: ['JS'] }
+      ];
+      const result = applyWikilinks(content, entities, { firstOccurrenceOnly: true });
+
+      // Only first match (JS) should be linked
+      expect(result.content).toBe('[[JavaScript|JS]] is fun. JavaScript is powerful.');
+      expect(result.linksAdded).toBe(1);
+    });
+
+    it('should prioritize longer alias matches', () => {
+      const content = 'Working with API Management and the API';
+      const entities = [
+        { name: 'API', path: 'API.md', aliases: [] },
+        { name: 'API Management Platform', path: 'API Management Platform.md', aliases: ['API Management'] }
+      ];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toContain('[[API Management Platform|API Management]]');
+      expect(result.content).toContain('the [[API]]');
+    });
+
+    it('should work with string entities mixed with object entities', () => {
+      const content = 'Using React and the PRD';
+      const entities = [
+        'React',
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toContain('[[React]]');
+      expect(result.content).toContain('[[Product Requirements Document|PRD]]');
+    });
+  });
 });
 
 describe('suggestWikilinks', () => {
