@@ -23,3 +23,7 @@ coverage/
 # Environment
 .env
 .env.local
+
+# Strategic planning documents - keep private
+ROADMAP.md
+ROADMAP*.md
