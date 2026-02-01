@@ -12,6 +12,8 @@
  * - HTML/XML tags (<tag>)
  * - Obsidian comments (%% ... %%)
  * - Math expressions ($ ... $ and $$ ... $$)
+ * - Markdown headers (# to ###### at line start)
+ * - Obsidian callouts (> [!type] syntax)
  */
 import type { ProtectedZone } from './types.js';
 /**

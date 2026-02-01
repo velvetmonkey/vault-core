@@ -63,7 +63,7 @@ export interface ProtectedZone {
 /**
  * Types of protected zones
  */
-export type ProtectedZoneType = 'frontmatter' | 'code_block' | 'inline_code' | 'wikilink' | 'markdown_link' | 'url' | 'hashtag' | 'html_tag' | 'obsidian_comment' | 'math';
+export type ProtectedZoneType = 'frontmatter' | 'code_block' | 'inline_code' | 'wikilink' | 'markdown_link' | 'url' | 'hashtag' | 'html_tag' | 'obsidian_comment' | 'math' | 'header' | 'obsidian_callout';
 /**
  * Options for entity scanning
  */

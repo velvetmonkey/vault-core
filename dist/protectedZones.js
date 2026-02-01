@@ -12,6 +12,8 @@
  * - HTML/XML tags (<tag>)
  * - Obsidian comments (%% ... %%)
  * - Math expressions ($ ... $ and $$ ... $$)
+ * - Markdown headers (# to ###### at line start)
+ * - Obsidian callouts (> [!type] syntax)
  */
 /**
  * Find where YAML frontmatter ends
@@ -87,6 +89,10 @@ export function getProtectedZones(content) {
     zones.push(...findPatternZones(content, /%%.*?%%/gs, 'obsidian_comment'));
     // 10. Math expressions ($ ... $ and $$ ... $$)
     zones.push(...findPatternZones(content, /\$\$[\s\S]*?\$\$|\$[^\$]+\$/g, 'math'));
+    // 11. Markdown headers (# to ###### at start of line)
+    zones.push(...findPatternZones(content, /^#{1,6}\s+.+$/gm, 'header'));
+    // 12. Obsidian callouts (> [!type] syntax)
+    zones.push(...findPatternZones(content, /^>\s*\[![\w-]+\].*$/gm, 'obsidian_callout'));
     // Sort by start position
     zones.sort((a, b) => a.start - b.start);
     return zones;
