@@ -1,0 +1,129 @@
+name: Full Benchmarks
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC daily
+  workflow_dispatch:      # Manual trigger
+  push:
+    tags: ['v*']          # Release tags
+
+jobs:
+  benchmark-large:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # 1k vault benchmark
+      - name: Generate 1k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 1000 --output /tmp/bench-vault-1k --seed 12345
+
+      - name: Run 1k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-1k --output /tmp/results-1k.json
+
+      # 10k vault benchmark
+      - name: Generate 10k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 10000 --output /tmp/bench-vault-10k --seed 12345
+
+      - name: Run 10k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-10k --output /tmp/results-10k.json
+
+      # 50k vault benchmark
+      - name: Generate 50k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 50000 --output /tmp/bench-vault-50k --seed 12345
+
+      - name: Run 50k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-50k --output /tmp/results-50k.json
+
+      # 100k vault benchmark
+      - name: Generate 100k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 100000 --output /tmp/bench-vault-100k --seed 12345
+
+      - name: Run 100k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-100k --output /tmp/results-100k.json
+
+      # Aggregated results
+      - name: Aggregate results
+        run: |
+          cd packages/bench
+          npm run aggregate-results -- /tmp/results-*.json --output /tmp/benchmark-report.json
+
+      - name: Check for regressions
+        run: |
+          cd packages/bench
+          npm run check-regression -- /tmp/benchmark-report.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-full
+          path: |
+            /tmp/results-*.json
+            /tmp/benchmark-report.json
+          retention-days: 90
+
+  iteration-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: benchmark-large
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate 10k test vault for iteration testing
+        run: |
+          cd packages/bench
+          npm run generate -- --size 10000 --output /tmp/iteration-vault --seed 54321
+
+      - name: Run 10k iteration stress test
+        run: |
+          cd packages/bench
+          npm run iteration-stress -- --vault /tmp/iteration-vault --iterations 10000 --output /tmp/iteration-results.json
+
+      - name: Upload iteration results
+        uses: actions/upload-artifact@v4
+        with:
+          name: iteration-stress-results
+          path: /tmp/iteration-results.json
+          retention-days: 90

@@ -1,22 +1,25 @@
 > **Part of the Flywheel Suite:** Shared foundation for vault operations. See [Flywheel](https://github.com/velvetmonkey/flywheel) for graph intelligence and [Flywheel-Crank](https://github.com/velvetmonkey/flywheel-crank) for safe mutations.
 
-# @velvetmonkey/vault-core
+# vault-core Monorepo
 
-Shared vault utilities for the Flywheel ecosystem.
+Shared infrastructure for the Flywheel ecosystem.
 
+[![CI](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ---
 
-## Why This Exists
+## Packages
 
-Flywheel and Flywheel-Crank both need to:
-- Scan vaults for entity names (people, projects, technologies)
-- Detect protected zones (code blocks, frontmatter, existing links)
-- Apply wikilinks safely without corrupting content
+| Package | Description | npm |
+|---------|-------------|-----|
+| **[@velvetmonkey/vault-core](./packages/core)** | Shared vault utilities (entity scanning, protected zones, wikilinks) | [![npm](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core) |
+| **[@velvetmonkey/flywheel-bench](./packages/bench)** | Benchmark infrastructure (vault generation, performance testing, reliability) | [![npm](https://img.shields.io/npm/v/@velvetmonkey/flywheel-bench.svg)](https://www.npmjs.com/package/@velvetmonkey/flywheel-bench) |
 
-Rather than duplicate this logic, vault-core provides the shared foundation.
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -28,7 +31,11 @@ Rather than duplicate this logic, vault-core provides the shared foundation.
 ┌─────────────────────────────────────────┐
 │           vault-core                    │
 │  Entity scanning · Protected zones ·    │
-│  Wikilink application                   │
+│  Wikilink application · Logging         │
+├─────────────────────────────────────────┤
+│           flywheel-bench                │
+│  Vault generation · Benchmarks ·        │
+│  Reliability testing                    │
 └──────────────────┬──────────────────────┘
                    │
                    ▼
@@ -40,90 +47,196 @@ Rather than duplicate this logic, vault-core provides the shared foundation.
 
 ---
 
-## Installation
+## Quick Start
+
+### Install vault-core
 
 ```bash
 npm install @velvetmonkey/vault-core
 ```
 
+```typescript
+import { scanVaultEntities, applyWikilinks, getProtectedZones } from '@velvetmonkey/vault-core';
+
+// Scan vault for entities
+const index = await scanVaultEntities('/path/to/vault');
+
+// Apply wikilinks safely
+const result = applyWikilinks(content, entities);
+```
+
+### Install flywheel-bench (for testing)
+
+```bash
+npm install --save-dev @velvetmonkey/flywheel-bench
+```
+
+```typescript
+import { generateVault, BenchmarkRunner } from '@velvetmonkey/flywheel-bench';
+
+// Generate a test vault
+await generateVault({
+  outputDir: '/tmp/test-vault',
+  noteCount: 10000,
+  seed: 12345,
+});
+
+// Run benchmarks
+const runner = new BenchmarkRunner({ vaultPath: '/tmp/test-vault' });
+const results = await runner.run();
+```
+
 ---
 
-## Modules
+## Development
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+
+### Setup
+
+```bash
+git clone https://github.com/velvetmonkey/vault-core.git
+cd vault-core
+npm install
+npm run build
+```
+
+### Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run specific package tests
+cd packages/core && npm test
+cd packages/bench && npm test
+
+# Run reliability tests
+cd packages/bench && npm run test:reliability
+```
+
+### Benchmarks
+
+```bash
+cd packages/bench
+
+# Generate test vault
+npm run generate -- --size 10000 --output /tmp/vault --seed 12345
+
+# Run benchmarks
+npm run bench -- --vault /tmp/vault
+
+# Check for regressions
+npm run check-regression -- results.json
+```
+
+---
+
+## Documentation
+
+- [Testing Guide](./docs/TESTING.md) - Test infrastructure and methodology
+- [Scale Benchmarks](./docs/SCALE_BENCHMARKS.md) - Performance targets and results
+
+---
+
+## vault-core Package
+
+Shared utilities used by both Flywheel and Flywheel-Crank:
 
 ### Entity Scanning
 
-Scan an Obsidian vault to build an index of entities (notes) organized by category.
+Scan Obsidian vaults to build entity indexes:
 
 ```typescript
-import { scanVaultEntities, getAllEntities, filterPeriodicNotes } from '@velvetmonkey/vault-core';
+import { scanVaultEntities, getAllEntities } from '@velvetmonkey/vault-core';
 
-const index = await scanVaultEntities('/path/to/vault', options);
+const index = await scanVaultEntities('/path/to/vault');
 const entities = getAllEntities(index);
-const nonPeriodic = filterPeriodicNotes(entities);
 ```
-
-**Detected categories:** People (`team/`, `people/`), Projects (`projects/`, `systems/`), Decisions (`decisions/`, `adr/`), and more.
 
 ### Protected Zones
 
-Detect regions in markdown that shouldn't be modified during wikilink insertion.
+Detect regions that shouldn't be modified:
 
 ```typescript
 import { getProtectedZones, isInProtectedZone } from '@velvetmonkey/vault-core';
 
-const zones = getProtectedZones(markdownContent);
-const safe = !isInProtectedZone(zones, cursorPosition);
+const zones = getProtectedZones(content);
+const safe = !isInProtectedZone(zones, position);
 ```
-
-**Protected zone types:**
-- YAML frontmatter (`---` blocks)
-- Code blocks (fenced and indented)
-- Inline code (backticks)
-- Existing wikilinks (`[[...]]`)
-- URLs and markdown links
 
 ### Wikilinks
 
-Apply or suggest wikilinks to entity names in markdown content.
+Apply or suggest wikilinks safely:
 
 ```typescript
-import { applyWikilinks, suggestWikilinks } from '@velvetmonkey/vault-core';
+import { applyWikilinks, processWikilinks, detectImplicitEntities } from '@velvetmonkey/vault-core';
 
-const suggestions = suggestWikilinks(content, entityIndex);
-const linked = applyWikilinks(content, entityIndex, options);
+// Link to known entities
+const result = applyWikilinks(content, entities);
+
+// Also detect and link implicit entities (proper nouns, etc.)
+const extended = processWikilinks(content, entities, { detectImplicit: true });
 ```
 
-Wikilinks are only applied in safe zones—never inside code, frontmatter, or existing links.
+### Operation Logging
+
+Unified logging for cross-product metrics:
+
+```typescript
+import { OperationLogger, getSessionId } from '@velvetmonkey/vault-core';
+
+const logger = new OperationLogger(vaultPath, 'flywheel');
+await logger.wrap('search_notes', async () => {
+  // operation code
+});
+```
 
 ---
 
-## API Reference
+## flywheel-bench Package
 
-### Types
+Testing infrastructure for the Flywheel ecosystem:
 
-| Type | Description |
-|------|-------------|
-| `EntityIndex` | Map of category to entity names |
-| `EntityCategory` | Entity category identifier |
-| `ProtectedZone` | Region that shouldn't be modified |
-| `ScanOptions` | Options for vault scanning |
-| `WikilinkOptions` | Options for wikilink application |
-| `WikilinkResult` | Result of wikilink suggestion |
+### Vault Generation
 
-### Functions
+Generate reproducible test vaults:
 
-| Function | Description |
-|----------|-------------|
-| `scanVaultEntities(path, options)` | Scan vault for entities |
-| `getAllEntities(index)` | Get flat list of all entities |
-| `filterPeriodicNotes(entities)` | Remove daily/weekly/etc notes |
-| `loadEntityCache(path)` / `saveEntityCache(path, index)` | Cache management |
-| `getProtectedZones(content)` | Find protected regions |
-| `isInProtectedZone(zones, position)` | Check if position is protected |
-| `rangeOverlapsProtectedZone(zones, start, end)` | Check range overlap |
-| `findFrontmatterEnd(content)` | Find end of YAML frontmatter |
-| `applyWikilinks(content, index, options)` | Apply wikilinks to content |
-| `suggestWikilinks(content, index)` | Get wikilink suggestions |
+```typescript
+import { generateVault, VAULT_PRESETS } from '@velvetmonkey/flywheel-bench';
+
+await generateVault({
+  ...VAULT_PRESETS['10k'],
+  outputDir: '/tmp/vault',
+  seed: 12345,
+});
+```
+
+### Benchmark Harness
+
+Run and compare benchmarks:
+
+```typescript
+import { BenchmarkRunner, detectRegressions } from '@velvetmonkey/flywheel-bench';
+
+const runner = new BenchmarkRunner(config);
+const results = await runner.run(suites);
+const regressions = detectRegressions(results, baseline);
+```
+
+### Reliability Testing
+
+Validate mutation reliability:
+
+```typescript
+import { runAllReliabilityTests } from '@velvetmonkey/flywheel-bench';
+
+const summary = await runAllReliabilityTests('/tmp/test-dir');
+console.log(`Passed: ${summary.passed}/${summary.total}`);
+```
 
 ---
 

@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+  benchmark-small:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate 1k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 1000 --output /tmp/bench-vault-1k --seed 12345
+
+      - name: Run 1k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-1k --output /tmp/results-1k.json
+
+      - name: Generate 10k test vault
+        run: |
+          cd packages/bench
+          npm run generate -- --size 10000 --output /tmp/bench-vault-10k --seed 12345
+
+      - name: Run 10k benchmark
+        run: |
+          cd packages/bench
+          npm run bench -- --vault /tmp/bench-vault-10k --output /tmp/results-10k.json
+
+      - name: Check for regressions
+        run: |
+          cd packages/bench
+          npm run check-regression -- /tmp/results-1k.json /tmp/results-10k.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-small
+          path: /tmp/results-*.json
+          retention-days: 30
+
+  reliability:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run reliability tests
+        run: |
+          cd packages/bench
+          npm run test:reliability
