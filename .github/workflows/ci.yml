@@ -53,7 +53,7 @@ jobs:
       - name: Generate 1k test vault
         run: |
           cd packages/bench
-          npm run generate -- --size 1000 --output /tmp/bench-vault-1k --seed 12345
+          npm run generate -- --size 1k --output /tmp/bench-vault-1k --seed 12345
 
       - name: Run 1k benchmark
         run: |
@@ -63,7 +63,7 @@ jobs:
       - name: Generate 10k test vault
         run: |
           cd packages/bench
-          npm run generate -- --size 10000 --output /tmp/bench-vault-10k --seed 12345
+          npm run generate -- --size 10k --output /tmp/bench-vault-10k --seed 12345
 
       - name: Run 10k benchmark
         run: |
