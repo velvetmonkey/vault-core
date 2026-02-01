@@ -116,6 +116,51 @@ Content`;
     const math = zones.find(z => z.type === 'math');
     expect(math).toBeDefined();
   });
+
+  it('should detect markdown headers', () => {
+    const content = '# Main Title\nSome content\n## Subsection\nMore content';
+    const zones = getProtectedZones(content);
+    const headers = zones.filter(z => z.type === 'header');
+    expect(headers.length).toBeGreaterThan(0);
+    expect(headers.some(h => content.slice(h.start, h.end).includes('Main Title'))).toBe(true);
+  });
+
+  it('should detect various header levels', () => {
+    const content = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
+    const zones = getProtectedZones(content);
+    const headers = zones.filter(z => z.type === 'header');
+    expect(headers).toHaveLength(6);
+  });
+
+  it('should not treat hashtags without space as headers', () => {
+    const content = '#notaheader and #hashtag\n# Valid Header';
+    const zones = getProtectedZones(content);
+    const headers = zones.filter(z => z.type === 'header');
+    // Should only detect the valid header, not hashtags
+    expect(headers).toHaveLength(1);
+    expect(content.slice(headers[0].start, headers[0].end)).toBe('# Valid Header');
+  });
+
+  it('should detect Obsidian callouts', () => {
+    const content = '> [!note]\n> This is a note\n\nRegular text';
+    const zones = getProtectedZones(content);
+    const callout = zones.find(z => z.type === 'obsidian_callout');
+    expect(callout).toBeDefined();
+  });
+
+  it('should detect various callout types', () => {
+    const content = '> [!note]\n> [!warning]\n> [!tip]\n> [!error]';
+    const zones = getProtectedZones(content);
+    const callouts = zones.filter(z => z.type === 'obsidian_callout');
+    expect(callouts.length).toBe(4);
+  });
+
+  it('should detect callouts with custom types', () => {
+    const content = '> [!custom-type]\n> Custom callout';
+    const zones = getProtectedZones(content);
+    const callout = zones.find(z => z.type === 'obsidian_callout');
+    expect(callout).toBeDefined();
+  });
 });
 
 describe('isInProtectedZone', () => {

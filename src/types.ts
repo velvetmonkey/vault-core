@@ -88,7 +88,9 @@ export type ProtectedZoneType =
   | 'hashtag'
   | 'html_tag'
   | 'obsidian_comment'
-  | 'math';
+  | 'math'
+  | 'header'
+  | 'obsidian_callout';
 
 /**
  * Options for entity scanning
