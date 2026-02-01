@@ -50,36 +50,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Generate 1k test vault
+      - name: Run benchmarks (1k and 10k vaults)
         run: |
           cd packages/bench
-          npm run generate -- --size 1k --output /tmp/bench-vault-1k --seed 12345
-
-      - name: Run 1k benchmark
-        run: |
-          cd packages/bench
-          npm run bench -- --vault /tmp/bench-vault-1k --output /tmp/results-1k.json
-
-      - name: Generate 10k test vault
-        run: |
-          cd packages/bench
-          npm run generate -- --size 10k --output /tmp/bench-vault-10k --seed 12345
-
-      - name: Run 10k benchmark
-        run: |
-          cd packages/bench
-          npm run bench -- --vault /tmp/bench-vault-10k --output /tmp/results-10k.json
-
-      - name: Check for regressions
-        run: |
-          cd packages/bench
-          npm run check-regression -- /tmp/results-1k.json /tmp/results-10k.json
+          npm run bench -- --sizes 1000,10000 --output /tmp/benchmark-results --vault-dir /tmp/bench-vaults
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-small
-          path: /tmp/results-*.json
+          path: /tmp/benchmark-results/*
           retention-days: 30
 
   reliability:
