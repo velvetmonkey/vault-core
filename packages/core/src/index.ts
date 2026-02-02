@@ -100,6 +100,12 @@ export {
   getLegacyPaths,
   backupLegacyFiles,
   deleteLegacyFiles,
+  // Vault Index Cache
+  saveVaultIndexCache,
+  loadVaultIndexCache,
+  getVaultIndexCacheInfo,
+  clearVaultIndexCache,
+  isVaultIndexCacheValid,
   SCHEMA_VERSION,
   STATE_DB_FILENAME,
   FLYWHEEL_DIR,
@@ -114,4 +120,6 @@ export type {
   StateDbMetadata,
   MigrationResult,
   LegacyPaths,
+  VaultIndexCacheData,
+  VaultIndexCacheInfo,
 } from './sqlite.js';

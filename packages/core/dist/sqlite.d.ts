@@ -196,6 +196,67 @@ export declare function stateDbExists(vaultPath: string): boolean;
  * Delete the state database (for testing or reset)
  */
 export declare function deleteStateDb(vaultPath: string): void;
+/** Serializable VaultIndex for caching */
+export interface VaultIndexCacheData {
+    notes: Array<{
+        path: string;
+        title: string;
+        aliases: string[];
+        frontmatter: Record<string, unknown>;
+        outlinks: Array<{
+            target: string;
+            alias?: string;
+            line: number;
+        }>;
+        tags: string[];
+        modified: number;
+        created?: number;
+    }>;
+    backlinks: Array<[string, Array<{
+        source: string;
+        line: number;
+        context?: string;
+    }>]>;
+    entities: Array<[string, string]>;
+    tags: Array<[string, string[]]>;
+    builtAt: number;
+}
+/** Cache metadata */
+export interface VaultIndexCacheInfo {
+    builtAt: Date;
+    noteCount: number;
+    version: number;
+}
+/**
+ * Save VaultIndex to cache
+ *
+ * @param stateDb - State database instance
+ * @param indexData - Serialized VaultIndex data
+ */
+export declare function saveVaultIndexCache(stateDb: StateDb, indexData: VaultIndexCacheData): void;
+/**
+ * Load VaultIndex from cache
+ *
+ * @param stateDb - State database instance
+ * @returns Cached VaultIndex data or null if not found
+ */
+export declare function loadVaultIndexCache(stateDb: StateDb): VaultIndexCacheData | null;
+/**
+ * Get cache metadata without loading full data
+ */
+export declare function getVaultIndexCacheInfo(stateDb: StateDb): VaultIndexCacheInfo | null;
+/**
+ * Clear the vault index cache
+ */
+export declare function clearVaultIndexCache(stateDb: StateDb): void;
+/**
+ * Check if cache is valid (not too old and note count matches)
+ *
+ * @param stateDb - State database instance
+ * @param actualNoteCount - Current number of notes in vault
+ * @param maxAgeMs - Maximum cache age in milliseconds (default 24 hours)
+ */
+export declare function isVaultIndexCacheValid(stateDb: StateDb, actualNoteCount: number, maxAgeMs?: number): boolean;
 /** Result of a migration operation */
 export interface MigrationResult {
     success: boolean;

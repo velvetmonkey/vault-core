@@ -258,6 +258,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
   path, title, content,
   tokenize='porter'
 );
+
+-- Vault index cache (for fast startup)
+-- Stores serialized VaultIndex to avoid full rebuild on startup
+CREATE TABLE IF NOT EXISTS vault_index_cache (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data BLOB NOT NULL,
+  built_at INTEGER NOT NULL,
+  note_count INTEGER NOT NULL,
+  version INTEGER DEFAULT 1
+);
 `;
 
 // =============================================================================
@@ -937,6 +947,126 @@ export function deleteStateDb(vaultPath: string): void {
   const shmPath = dbPath + '-shm';
   if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
   if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+}
+
+// =============================================================================
+// Vault Index Cache Operations
+// =============================================================================
+
+/** Serializable VaultIndex for caching */
+export interface VaultIndexCacheData {
+  notes: Array<{
+    path: string;
+    title: string;
+    aliases: string[];
+    frontmatter: Record<string, unknown>;
+    outlinks: Array<{ target: string; alias?: string; line: number }>;
+    tags: string[];
+    modified: number;
+    created?: number;
+  }>;
+  backlinks: Array<[string, Array<{ source: string; line: number; context?: string }>]>;
+  entities: Array<[string, string]>;
+  tags: Array<[string, string[]]>;
+  builtAt: number;
+}
+
+/** Cache metadata */
+export interface VaultIndexCacheInfo {
+  builtAt: Date;
+  noteCount: number;
+  version: number;
+}
+
+/**
+ * Save VaultIndex to cache
+ *
+ * @param stateDb - State database instance
+ * @param indexData - Serialized VaultIndex data
+ */
+export function saveVaultIndexCache(
+  stateDb: StateDb,
+  indexData: VaultIndexCacheData
+): void {
+  const data = JSON.stringify(indexData);
+  const stmt = stateDb.db.prepare(`
+    INSERT OR REPLACE INTO vault_index_cache (id, data, built_at, note_count, version)
+    VALUES (1, ?, ?, ?, 1)
+  `);
+  stmt.run(data, indexData.builtAt, indexData.notes.length);
+}
+
+/**
+ * Load VaultIndex from cache
+ *
+ * @param stateDb - State database instance
+ * @returns Cached VaultIndex data or null if not found
+ */
+export function loadVaultIndexCache(
+  stateDb: StateDb
+): VaultIndexCacheData | null {
+  const stmt = stateDb.db.prepare(`
+    SELECT data, built_at, note_count FROM vault_index_cache WHERE id = 1
+  `);
+  const row = stmt.get() as { data: string; built_at: number; note_count: number } | undefined;
+
+  if (!row) return null;
+
+  try {
+    return JSON.parse(row.data) as VaultIndexCacheData;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get cache metadata without loading full data
+ */
+export function getVaultIndexCacheInfo(stateDb: StateDb): VaultIndexCacheInfo | null {
+  const stmt = stateDb.db.prepare(`
+    SELECT built_at, note_count, version FROM vault_index_cache WHERE id = 1
+  `);
+  const row = stmt.get() as { built_at: number; note_count: number; version: number } | undefined;
+
+  if (!row) return null;
+
+  return {
+    builtAt: new Date(row.built_at),
+    noteCount: row.note_count,
+    version: row.version,
+  };
+}
+
+/**
+ * Clear the vault index cache
+ */
+export function clearVaultIndexCache(stateDb: StateDb): void {
+  stateDb.db.prepare('DELETE FROM vault_index_cache').run();
+}
+
+/**
+ * Check if cache is valid (not too old and note count matches)
+ *
+ * @param stateDb - State database instance
+ * @param actualNoteCount - Current number of notes in vault
+ * @param maxAgeMs - Maximum cache age in milliseconds (default 24 hours)
+ */
+export function isVaultIndexCacheValid(
+  stateDb: StateDb,
+  actualNoteCount: number,
+  maxAgeMs: number = 24 * 60 * 60 * 1000
+): boolean {
+  const info = getVaultIndexCacheInfo(stateDb);
+  if (!info) return false;
+
+  // Check note count matches (quick validation)
+  if (info.noteCount !== actualNoteCount) return false;
+
+  // Check age
+  const age = Date.now() - info.builtAt.getTime();
+  if (age > maxAgeMs) return false;
+
+  return true;
 }
 
 // =============================================================================
