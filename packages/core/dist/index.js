@@ -12,4 +12,6 @@ export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, findF
 export { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, } from './wikilinks.js';
 // Logging (unified cross-product logging)
 export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, clearSession, createChildSession, getParentSession, isChildSession, DEFAULT_LOGGING_CONFIG, } from './logging/index.js';
+// SQLite State Database
+export { openStateDb, deleteStateDb, stateDbExists, getStateDbPath, searchEntities, searchEntitiesPrefix, getEntityByName, getAllEntitiesFromDb, getEntityIndexFromDb, getBacklinks, getOutlinks, replaceLinksFromSource, recordEntityMention, getEntityRecency, getAllRecency, setCrankState, getCrankState, deleteCrankState, getStateDbMetadata, isEntityDataStale, escapeFts5Query, migrateFromJsonToSqlite, getLegacyPaths, backupLegacyFiles, deleteLegacyFiles, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
 //# sourceMappingURL=index.js.map

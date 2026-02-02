@@ -320,6 +320,18 @@ const IMPLICIT_EXCLUDE_WORDS = new Set([
     'true', 'false', 'null', 'undefined', 'none', 'class', 'function', 'method',
 ]);
 /**
+ * Words that commonly start sentences but should not start a proper noun entity.
+ * These are checked separately because they might appear capitalized at sentence start.
+ */
+const SENTENCE_STARTER_WORDS = new Set([
+    'visit', 'also', 'see', 'please', 'note', 'check', 'read', 'look', 'find',
+    'get', 'set', 'add', 'use', 'try', 'make', 'take', 'give', 'keep', 'let',
+    'call', 'run', 'ask', 'tell', 'show', 'help', 'need', 'want', 'like',
+    'think', 'know', 'feel', 'seem', 'look', 'hear', 'watch', 'wait', 'work',
+    'start', 'stop', 'open', 'close', 'move', 'turn', 'bring', 'send', 'leave',
+    'meet', 'join', 'follow', 'include', 'consider', 'remember', 'forget',
+]);
+/**
  * Detect implicit entities in content using pattern matching
  *
  * This finds potential entities that don't have existing files:
@@ -372,9 +384,24 @@ export function detectImplicitEntities(content, config = {}) {
         const properNounRegex = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
         let match;
         while ((match = properNounRegex.exec(content)) !== null) {
-            const text = match[1];
-            const start = match.index;
-            const end = start + match[0].length;
+            let text = match[1];
+            let start = match.index;
+            let end = start + match[0].length;
+            // Check if first word is a common sentence starter (e.g., "Visit", "Also", "See")
+            // If so, trim it and use the remaining words as the entity
+            const firstSpaceIndex = text.indexOf(' ');
+            if (firstSpaceIndex > 0) {
+                const firstWord = text.substring(0, firstSpaceIndex).toLowerCase();
+                if (SENTENCE_STARTER_WORDS.has(firstWord)) {
+                    // Trim the first word and recalculate positions
+                    text = text.substring(firstSpaceIndex + 1);
+                    start = start + firstSpaceIndex + 1;
+                    // Only keep if remaining text has 2+ words (still a proper noun phrase)
+                    if (!text.includes(' ')) {
+                        continue; // Skip single-word remainder
+                    }
+                }
+            }
             if (!shouldExclude(text) && !isProtected(start, end)) {
                 detected.push({ text, start, end, pattern: 'proper-nouns' });
                 seenTexts.add(text.toLowerCase());

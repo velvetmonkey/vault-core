@@ -10,4 +10,6 @@ export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, findF
 export { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, } from './wikilinks.js';
 export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, clearSession, createChildSession, getParentSession, isChildSession, DEFAULT_LOGGING_CONFIG, } from './logging/index.js';
 export type { OperationLogEntry, SessionMetrics, AggregatedMetrics, LoggingConfig, ProductId, } from './logging/index.js';
+export { openStateDb, deleteStateDb, stateDbExists, getStateDbPath, searchEntities, searchEntitiesPrefix, getEntityByName, getAllEntitiesFromDb, getEntityIndexFromDb, getBacklinks, getOutlinks, replaceLinksFromSource, recordEntityMention, getEntityRecency, getAllRecency, setCrankState, getCrankState, deleteCrankState, getStateDbMetadata, isEntityDataStale, escapeFts5Query, migrateFromJsonToSqlite, getLegacyPaths, backupLegacyFiles, deleteLegacyFiles, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
+export type { StateDb, EntitySearchResult, NoteRow, LinkRow, RecencyRow, StateDbMetadata, MigrationResult, LegacyPaths, } from './sqlite.js';
 //# sourceMappingURL=index.d.ts.map

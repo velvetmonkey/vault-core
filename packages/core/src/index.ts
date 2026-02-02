@@ -72,3 +72,46 @@ export type {
   LoggingConfig,
   ProductId,
 } from './logging/index.js';
+
+// SQLite State Database
+export {
+  openStateDb,
+  deleteStateDb,
+  stateDbExists,
+  getStateDbPath,
+  searchEntities,
+  searchEntitiesPrefix,
+  getEntityByName,
+  getAllEntitiesFromDb,
+  getEntityIndexFromDb,
+  getBacklinks,
+  getOutlinks,
+  replaceLinksFromSource,
+  recordEntityMention,
+  getEntityRecency,
+  getAllRecency,
+  setCrankState,
+  getCrankState,
+  deleteCrankState,
+  getStateDbMetadata,
+  isEntityDataStale,
+  escapeFts5Query,
+  migrateFromJsonToSqlite,
+  getLegacyPaths,
+  backupLegacyFiles,
+  deleteLegacyFiles,
+  SCHEMA_VERSION,
+  STATE_DB_FILENAME,
+  FLYWHEEL_DIR,
+} from './sqlite.js';
+
+export type {
+  StateDb,
+  EntitySearchResult,
+  NoteRow,
+  LinkRow,
+  RecencyRow,
+  StateDbMetadata,
+  MigrationResult,
+  LegacyPaths,
+} from './sqlite.js';
