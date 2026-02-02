@@ -7,6 +7,15 @@ Shared infrastructure for the Flywheel ecosystem.
 [![CI](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Scale](https://img.shields.io/badge/scale-100k%20notes-brightgreen.svg)](./packages/bench/README.md)
+
+## Verified Capabilities
+
+✅ **100k Note Scale** - Vault generation and benchmarking tested at 100,000 notes
+✅ **Iteration Stress** - 10,000+ sequential operations without corruption
+✅ **Cross-Platform** - Tested on Ubuntu, Windows, macOS (Intel + ARM)
+✅ **Entity Detection** - Porter stemmer + Adamic-Adar scoring for wikilink inference
+✅ **Protected Zones** - Code blocks, frontmatter, existing links preserved
 
 ---
 
