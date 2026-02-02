@@ -81,6 +81,10 @@ export interface StateDb {
     setCrankState: Statement;
     getCrankState: Statement;
     deleteCrankState: Statement;
+    setFlywheelConfigStmt: Statement;
+    getFlywheelConfigStmt: Statement;
+    getAllFlywheelConfigStmt: Statement;
+    deleteFlywheelConfigStmt: Statement;
     insertNote: Statement;
     updateNote: Statement;
     deleteNote: Statement;
@@ -176,6 +180,36 @@ export declare function getCrankState<T>(stateDb: StateDb, key: string): T | nul
  * Delete a crank state key
  */
 export declare function deleteCrankState(stateDb: StateDb, key: string): void;
+/** Flywheel config row from database */
+export interface FlywheelConfigRow {
+    key: string;
+    value: string;
+}
+/**
+ * Set a flywheel config value
+ */
+export declare function setFlywheelConfig(stateDb: StateDb, key: string, value: unknown): void;
+/**
+ * Get a flywheel config value
+ */
+export declare function getFlywheelConfig<T>(stateDb: StateDb, key: string): T | null;
+/**
+ * Get all flywheel config values as an object
+ */
+export declare function getAllFlywheelConfig(stateDb: StateDb): Record<string, unknown>;
+/**
+ * Delete a flywheel config key
+ */
+export declare function deleteFlywheelConfig(stateDb: StateDb, key: string): void;
+/**
+ * Save entire Flywheel config object to database
+ * Stores each top-level key as a separate row
+ */
+export declare function saveFlywheelConfigToDb(stateDb: StateDb, config: Record<string, unknown>): void;
+/**
+ * Load Flywheel config from database and reconstruct as typed object
+ */
+export declare function loadFlywheelConfigFromDb(stateDb: StateDb): Record<string, unknown> | null;
 /**
  * Get database metadata
  */
@@ -263,17 +297,24 @@ export interface MigrationResult {
     entitiesMigrated: number;
     recencyMigrated: number;
     crankStateMigrated: number;
+    linksMigrated: number;
+    configMigrated: boolean;
+    /** True if no legacy files were found to migrate */
+    skipped: boolean;
     errors: string[];
 }
 /** Paths to legacy JSON files */
 export interface LegacyPaths {
-    entities?: string;
-    recency?: string;
-    lastCommit?: string;
-    hints?: string;
+    config?: string | null;
+    entityCache?: string | null;
+    recency?: string | null;
+    lastCommit?: string | null;
+    hints?: string | null;
+    backlinks?: string | null;
 }
 /**
  * Get default legacy file paths for a vault
+ * Returns null for paths that don't exist (for easy checking)
  */
 export declare function getLegacyPaths(vaultPath: string): LegacyPaths;
 /**
@@ -284,21 +325,44 @@ export declare function getLegacyPaths(vaultPath: string): LegacyPaths;
  * original JSON files - that should be done manually after verifying
  * the migration was successful.
  *
- * @param stateDb - Open state database
- * @param legacyPaths - Paths to legacy JSON files
+ * Can be called with just a vault path (convenience) or with
+ * an existing StateDb and legacy paths (for more control).
+ *
+ * @param stateDbOrVaultPath - Open state database OR vault path string
+ * @param legacyPaths - Paths to legacy JSON files (optional if vault path provided)
  * @returns Migration result with counts and any errors
  */
-export declare function migrateFromJsonToSqlite(stateDb: StateDb, legacyPaths: LegacyPaths): Promise<MigrationResult>;
+export declare function migrateFromJsonToSqlite(stateDbOrVaultPath: StateDb | string, legacyPaths?: LegacyPaths): Promise<MigrationResult>;
+/** Result of backup operation */
+export interface BackupResult {
+    success: boolean;
+    backedUpFiles: string[];
+    errors: string[];
+}
+/** Result of delete operation */
+export interface DeleteResult {
+    success: boolean;
+    deletedFiles: string[];
+    errors: string[];
+    error?: string;
+}
+/** Options for delete operation */
+export interface DeleteOptions {
+    /** If true, require StateDb to exist before deleting legacy files */
+    requireStateDb?: boolean;
+}
 /**
  * Backup legacy JSON files before migration
  *
- * Creates .bak files alongside the originals
+ * Creates .bak files alongside the originals.
+ * Can accept either a vault path (convenience) or LegacyPaths object.
  */
-export declare function backupLegacyFiles(legacyPaths: LegacyPaths): string[];
+export declare function backupLegacyFiles(vaultPathOrLegacyPaths: string | LegacyPaths): Promise<BackupResult>;
 /**
  * Delete legacy JSON files after successful migration
  *
- * Only deletes files that have corresponding .bak backups
+ * Can accept either a vault path (convenience) or LegacyPaths object.
+ * Use options.requireStateDb to ensure StateDb exists before deleting.
  */
-export declare function deleteLegacyFiles(legacyPaths: LegacyPaths): string[];
+export declare function deleteLegacyFiles(vaultPathOrLegacyPaths: string | LegacyPaths, options?: DeleteOptions): Promise<DeleteResult>;
 //# sourceMappingURL=sqlite.d.ts.map
