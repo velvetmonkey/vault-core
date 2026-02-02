@@ -12,6 +12,7 @@ async function main() {
   let preset = '1k';
   let outputDir = './test-vault';
   let seed: number | undefined;
+  let initGit = false;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -25,6 +26,9 @@ async function main() {
         break;
       case '--seed':
         seed = parseInt(args[++i], 10);
+        break;
+      case '--init-git':
+        initGit = true;
         break;
       case '--help':
       case '-h':
@@ -46,6 +50,7 @@ async function main() {
 
   try {
     const config = await loadVaultConfig(preset, outputDir, seed);
+    config.initGit = initGit;
     const result = await generateVault(config);
 
     console.log('\nVault generated successfully:');
@@ -72,6 +77,7 @@ Options:
   -s, --size <preset>   Vault size preset (1k, 10k, 50k, 100k)
   -o, --output <dir>    Output directory
   --seed <number>       Random seed for reproducibility
+  --init-git            Initialize git repo and commit files
   -h, --help            Show this help
 
 Examples:

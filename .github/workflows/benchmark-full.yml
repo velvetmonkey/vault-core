@@ -62,7 +62,7 @@ jobs:
       - name: Generate 10k test vault for iteration testing
         run: |
           cd packages/bench
-          npm run generate -- --size 10k --output /tmp/iteration-vault --seed 54321
+          npm run generate -- --size 10k --output /tmp/iteration-vault --seed 54321 --init-git
 
       - name: Run 10k iteration stress test
         run: |
