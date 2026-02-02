@@ -340,8 +340,8 @@ describe('SQLite State Management', () => {
 
   describe('FTS5 Query Escaping', () => {
     it('should escape special characters', () => {
-      expect(escapeFts5Query('test (query)')).toBe('test  query');
-      expect(escapeFts5Query('test: value')).toBe('test  value');
+      expect(escapeFts5Query('test (query)')).toBe('test query');
+      expect(escapeFts5Query('test: value')).toBe('test value');
       expect(escapeFts5Query('test "value"')).toBe('test ""value""');
     });
 
