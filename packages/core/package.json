@@ -29,6 +29,8 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run test/e2e/",
+    "test:ci": "vitest run --reporter=github-actions",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"

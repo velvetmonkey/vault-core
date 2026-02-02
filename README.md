@@ -127,6 +127,16 @@ cd packages/bench && npm test
 cd packages/bench && npm run test:reliability
 ```
 
+### Test Suites
+
+| Script | Package | Purpose |
+|--------|---------|---------|
+| `npm test` | All | Run all unit tests |
+| `npm run test:e2e` | core | Cross-product integration tests |
+| `npm run test:perf` | bench | Performance baseline benchmarks |
+| `npm run test:memory` | bench | Memory scaling and leak detection |
+| `npm run test:reliability` | bench | Rollback, lock contention, idempotency |
+
 ### Benchmarks
 
 ```bash

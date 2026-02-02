@@ -101,6 +101,50 @@ Benchmarks that measure operation timing and memory usage at various scales:
 - Memory consumption
 - Git repository growth
 
+### E2E Tests (Cross-Product Integration)
+
+**Location:** `packages/core/test/e2e/`
+
+End-to-end tests validating the full Flywheel ecosystem working together:
+
+| File | Tests | Purpose |
+|------|-------|---------|
+| `cross-product.test.ts` | 5 | Full flywheel loop: scan → index → wikilinks → verify graph |
+| `migration.test.ts` | 4 | Legacy JSON cache → SQLite StateDb migration |
+
+```bash
+# Run E2E tests
+cd packages/core && npm run test:e2e
+```
+
+**Test scenarios:**
+- **Full flywheel loop**: vault-core scans → flywheel indexes → crank writes → verify graph updated
+- **Entity cache consistency**: Add entity via crank → rescan → both products see it
+- **Migration**: Upgrade legacy JSON cache to SQLite StateDb
+
+### Performance Baseline Tests
+
+**Location:** `packages/bench/test/`
+
+| File | Tests | Purpose |
+|------|-------|---------|
+| `performance-baseline.test.ts` | 6 | 1k/5k vault benchmarks with time thresholds |
+| `memory-profile.test.ts` | 4 | Memory scaling and leak detection |
+
+```bash
+# Run performance tests (forked for isolation)
+cd packages/bench && npm run test:perf
+
+# Run memory tests (with GC exposed)
+cd packages/bench && npm run test:memory
+```
+
+**Thresholds:**
+- 5k vault scan: < 30 seconds
+- 5k vault index: < 60 seconds
+- Backlink lookup: < 100ms after index built
+- Memory scaling: linear with note count (within 3× ratio)
+
 ## CI Integration
 
 ### On Every Push

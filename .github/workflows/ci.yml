@@ -31,6 +31,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Run E2E tests
+        run: npm run test:e2e --workspace=@velvetmonkey/vault-core
+
   benchmark-small:
     runs-on: ubuntu-latest
     needs: build

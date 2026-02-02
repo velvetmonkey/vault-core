@@ -29,6 +29,8 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run test/performance-baseline.test.ts --pool=forks",
+    "test:memory": "node --expose-gc node_modules/vitest/vitest.mjs run test/memory-profile.test.ts",
     "test:ci": "vitest run --reporter=github-actions",
     "test:reliability": "tsx src/cli/reliability.ts",
     "lint": "tsc --noEmit",
