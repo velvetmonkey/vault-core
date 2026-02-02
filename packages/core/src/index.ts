@@ -93,6 +93,13 @@ export {
   setCrankState,
   getCrankState,
   deleteCrankState,
+  // Flywheel Config
+  setFlywheelConfig,
+  getFlywheelConfig,
+  getAllFlywheelConfig,
+  deleteFlywheelConfig,
+  saveFlywheelConfigToDb,
+  loadFlywheelConfigFromDb,
   getStateDbMetadata,
   isEntityDataStale,
   escapeFts5Query,
@@ -122,4 +129,8 @@ export type {
   LegacyPaths,
   VaultIndexCacheData,
   VaultIndexCacheInfo,
+  FlywheelConfigRow,
+  BackupResult,
+  DeleteResult,
+  DeleteOptions,
 } from './sqlite.js';

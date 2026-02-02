@@ -103,6 +103,12 @@ export interface StateDb {
   getCrankState: Statement;
   deleteCrankState: Statement;
 
+  // Flywheel config operations
+  setFlywheelConfigStmt: Statement;
+  getFlywheelConfigStmt: Statement;
+  getAllFlywheelConfigStmt: Statement;
+  deleteFlywheelConfigStmt: Statement;
+
   // Notes operations
   insertNote: Statement;
   updateNote: Statement;
@@ -268,6 +274,13 @@ CREATE TABLE IF NOT EXISTS vault_index_cache (
   note_count INTEGER NOT NULL,
   version INTEGER DEFAULT 1
 );
+
+-- Flywheel configuration (replaces .flywheel.json)
+CREATE TABLE IF NOT EXISTS flywheel_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 // =============================================================================
@@ -432,6 +445,21 @@ export function openStateDb(vaultPath: string): StateDb {
     getCrankState: db.prepare('SELECT value FROM crank_state WHERE key = ?'),
 
     deleteCrankState: db.prepare('DELETE FROM crank_state WHERE key = ?'),
+
+    // Flywheel config operations
+    setFlywheelConfigStmt: db.prepare(`
+      INSERT INTO flywheel_config (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = datetime('now')
+    `),
+
+    getFlywheelConfigStmt: db.prepare('SELECT value FROM flywheel_config WHERE key = ?'),
+
+    getAllFlywheelConfigStmt: db.prepare('SELECT key, value FROM flywheel_config'),
+
+    deleteFlywheelConfigStmt: db.prepare('DELETE FROM flywheel_config WHERE key = ?'),
 
     // Notes operations
     insertNote: db.prepare(`
@@ -861,6 +889,88 @@ export function deleteCrankState(stateDb: StateDb, key: string): void {
 }
 
 // =============================================================================
+// Flywheel Config Operations
+// =============================================================================
+
+/** Flywheel config row from database */
+export interface FlywheelConfigRow {
+  key: string;
+  value: string;
+}
+
+/**
+ * Set a flywheel config value
+ */
+export function setFlywheelConfig(
+  stateDb: StateDb,
+  key: string,
+  value: unknown
+): void {
+  stateDb.setFlywheelConfigStmt.run(key, JSON.stringify(value));
+}
+
+/**
+ * Get a flywheel config value
+ */
+export function getFlywheelConfig<T>(stateDb: StateDb, key: string): T | null {
+  const row = stateDb.getFlywheelConfigStmt.get(key) as { value: string } | undefined;
+  if (!row) return null;
+  return JSON.parse(row.value) as T;
+}
+
+/**
+ * Get all flywheel config values as an object
+ */
+export function getAllFlywheelConfig(stateDb: StateDb): Record<string, unknown> {
+  const rows = stateDb.getAllFlywheelConfigStmt.all() as FlywheelConfigRow[];
+  const config: Record<string, unknown> = {};
+  for (const row of rows) {
+    try {
+      config[row.key] = JSON.parse(row.value);
+    } catch {
+      config[row.key] = row.value;
+    }
+  }
+  return config;
+}
+
+/**
+ * Delete a flywheel config key
+ */
+export function deleteFlywheelConfig(stateDb: StateDb, key: string): void {
+  stateDb.deleteFlywheelConfigStmt.run(key);
+}
+
+/**
+ * Save entire Flywheel config object to database
+ * Stores each top-level key as a separate row
+ */
+export function saveFlywheelConfigToDb(
+  stateDb: StateDb,
+  config: Record<string, unknown>
+): void {
+  const transaction = stateDb.db.transaction(() => {
+    for (const [key, value] of Object.entries(config)) {
+      if (value !== undefined) {
+        setFlywheelConfig(stateDb, key, value);
+      }
+    }
+  });
+  transaction();
+}
+
+/**
+ * Load Flywheel config from database and reconstruct as typed object
+ */
+export function loadFlywheelConfigFromDb(stateDb: StateDb): Record<string, unknown> | null {
+  const config = getAllFlywheelConfig(stateDb);
+  if (Object.keys(config).length === 0) {
+    return null;
+  }
+  return config;
+}
+
+// =============================================================================
 // Metadata Operations
 // =============================================================================
 
@@ -1079,27 +1189,42 @@ export interface MigrationResult {
   entitiesMigrated: number;
   recencyMigrated: number;
   crankStateMigrated: number;
+  linksMigrated: number;
+  configMigrated: boolean;
+  /** True if no legacy files were found to migrate */
+  skipped: boolean;
   errors: string[];
 }
 
 /** Paths to legacy JSON files */
 export interface LegacyPaths {
-  entities?: string;      // .claude/wikilink-entities.json
-  recency?: string;       // .claude/entity-recency.json
-  lastCommit?: string;    // .claude/last-crank-commit.json
-  hints?: string;         // .claude/crank-mutation-hints.json
+  config?: string | null;        // .claude/.flywheel.json
+  entityCache?: string | null;   // .claude/wikilink-entities.json
+  recency?: string | null;       // .claude/entity-recency.json
+  lastCommit?: string | null;    // .claude/last-crank-commit.json
+  hints?: string | null;         // .claude/crank-mutation-hints.json
+  backlinks?: string | null;     // .claude/backlinks.json (legacy)
 }
 
 /**
  * Get default legacy file paths for a vault
+ * Returns null for paths that don't exist (for easy checking)
  */
 export function getLegacyPaths(vaultPath: string): LegacyPaths {
   const claudeDir = path.join(vaultPath, '.claude');
+
+  const checkPath = (filename: string): string | null => {
+    const filePath = path.join(claudeDir, filename);
+    return fs.existsSync(filePath) ? filePath : null;
+  };
+
   return {
-    entities: path.join(claudeDir, 'wikilink-entities.json'),
-    recency: path.join(claudeDir, 'entity-recency.json'),
-    lastCommit: path.join(claudeDir, 'last-crank-commit.json'),
-    hints: path.join(claudeDir, 'crank-mutation-hints.json'),
+    config: checkPath('.flywheel.json'),
+    entityCache: checkPath('wikilink-entities.json'),
+    recency: checkPath('entity-recency.json'),
+    lastCommit: checkPath('last-crank-commit.json'),
+    hints: checkPath('crank-mutation-hints.json'),
+    backlinks: checkPath('backlinks.json'),
   };
 }
 
@@ -1111,77 +1236,205 @@ export function getLegacyPaths(vaultPath: string): LegacyPaths {
  * original JSON files - that should be done manually after verifying
  * the migration was successful.
  *
- * @param stateDb - Open state database
- * @param legacyPaths - Paths to legacy JSON files
+ * Can be called with just a vault path (convenience) or with
+ * an existing StateDb and legacy paths (for more control).
+ *
+ * @param stateDbOrVaultPath - Open state database OR vault path string
+ * @param legacyPaths - Paths to legacy JSON files (optional if vault path provided)
  * @returns Migration result with counts and any errors
  */
 export async function migrateFromJsonToSqlite(
-  stateDb: StateDb,
-  legacyPaths: LegacyPaths
+  stateDbOrVaultPath: StateDb | string,
+  legacyPaths?: LegacyPaths
 ): Promise<MigrationResult> {
+  // Handle convenience signature: migrateFromJsonToSqlite(vaultPath)
+  let stateDb: StateDb;
+  let paths: LegacyPaths;
+  let shouldCloseDb = false;
+
+  if (typeof stateDbOrVaultPath === 'string') {
+    const vaultPath = stateDbOrVaultPath;
+    stateDb = openStateDb(vaultPath);
+    paths = getLegacyPaths(vaultPath);
+    shouldCloseDb = true;
+  } else {
+    stateDb = stateDbOrVaultPath;
+    paths = legacyPaths ?? {};
+  }
   const result: MigrationResult = {
     success: true,
     entitiesMigrated: 0,
     recencyMigrated: 0,
     crankStateMigrated: 0,
+    linksMigrated: 0,
+    configMigrated: false,
+    skipped: false,
     errors: [],
   };
 
-  // Migrate entities
-  if (legacyPaths.entities && fs.existsSync(legacyPaths.entities)) {
-    try {
-      const content = fs.readFileSync(legacyPaths.entities, 'utf-8');
-      const index = JSON.parse(content) as import('./types.js').EntityIndex;
-      result.entitiesMigrated = stateDb.replaceAllEntities(index);
-    } catch (error) {
-      result.errors.push(`Failed to migrate entities: ${error}`);
-      result.success = false;
-    }
-  }
-
-  // Migrate recency data
-  if (legacyPaths.recency && fs.existsSync(legacyPaths.recency)) {
-    try {
-      const content = fs.readFileSync(legacyPaths.recency, 'utf-8');
-      const data = JSON.parse(content) as {
-        lastMentioned: Record<string, number>;
-        lastUpdated: number;
-        version: number;
-      };
-
-      for (const [entityName, timestamp] of Object.entries(data.lastMentioned)) {
-        recordEntityMention(stateDb, entityName, new Date(timestamp));
-        result.recencyMigrated++;
+  try {
+    // Migrate flywheel config
+    if (paths.config && fs.existsSync(paths.config)) {
+      try {
+        const content = fs.readFileSync(paths.config, 'utf-8');
+        const config = JSON.parse(content) as Record<string, unknown>;
+        saveFlywheelConfigToDb(stateDb, config);
+        result.configMigrated = true;
+      } catch (error) {
+        result.errors.push(`Failed to migrate config: ${error}`);
+        result.success = false;
       }
-    } catch (error) {
-      result.errors.push(`Failed to migrate recency: ${error}`);
-      result.success = false;
+    }
+
+    // Migrate entities
+    if (paths.entityCache && fs.existsSync(paths.entityCache)) {
+      try {
+        const content = fs.readFileSync(paths.entityCache, 'utf-8');
+        const index = JSON.parse(content) as import('./types.js').EntityIndex;
+        result.entitiesMigrated = stateDb.replaceAllEntities(index);
+      } catch (error) {
+        result.errors.push(`Failed to migrate entities: ${error}`);
+        result.success = false;
+      }
+    }
+
+    // Migrate recency data
+    if (paths.recency && fs.existsSync(paths.recency)) {
+      try {
+        const content = fs.readFileSync(paths.recency, 'utf-8');
+        const data = JSON.parse(content) as {
+          lastMentioned: Record<string, number>;
+          lastUpdated: number;
+          version: number;
+        };
+
+        for (const [entityName, timestamp] of Object.entries(data.lastMentioned)) {
+          recordEntityMention(stateDb, entityName, new Date(timestamp));
+          result.recencyMigrated++;
+        }
+      } catch (error) {
+        result.errors.push(`Failed to migrate recency: ${error}`);
+        result.success = false;
+      }
+    }
+
+    // Migrate last commit tracking
+    if (paths.lastCommit && fs.existsSync(paths.lastCommit)) {
+      try {
+        const content = fs.readFileSync(paths.lastCommit, 'utf-8');
+        const data = JSON.parse(content);
+        setCrankState(stateDb, 'last_commit', data);
+        result.crankStateMigrated++;
+      } catch (error) {
+        result.errors.push(`Failed to migrate last commit: ${error}`);
+        result.success = false;
+      }
+    }
+
+    // Migrate mutation hints
+    if (paths.hints && fs.existsSync(paths.hints)) {
+      try {
+        const content = fs.readFileSync(paths.hints, 'utf-8');
+        const data = JSON.parse(content);
+        setCrankState(stateDb, 'mutation_hints', data);
+        result.crankStateMigrated++;
+      } catch (error) {
+        result.errors.push(`Failed to migrate hints: ${error}`);
+        result.success = false;
+      }
+    }
+
+    // Migrate backlinks
+    if (paths.backlinks && fs.existsSync(paths.backlinks)) {
+      try {
+        const content = fs.readFileSync(paths.backlinks, 'utf-8');
+        const backlinks = JSON.parse(content) as Record<string, string[]>;
+
+        // Convert backlinks to link records
+        // backlinks format: { "target.md": ["source1.md", "source2.md"] }
+        for (const [targetPath, sources] of Object.entries(backlinks)) {
+          for (const sourcePath of sources) {
+            stateDb.insertLink.run(sourcePath, targetPath, targetPath, null);
+            result.linksMigrated++;
+          }
+        }
+      } catch (error) {
+        result.errors.push(`Failed to migrate backlinks: ${error}`);
+        result.success = false;
+      }
+    }
+
+    // Mark as skipped if nothing was migrated
+    const totalMigrated = result.entitiesMigrated + result.recencyMigrated +
+      result.crankStateMigrated + result.linksMigrated + (result.configMigrated ? 1 : 0);
+    if (totalMigrated === 0 && result.errors.length === 0) {
+      result.skipped = true;
+    }
+
+    return result;
+  } finally {
+    // Close db if we opened it
+    if (shouldCloseDb) {
+      stateDb.close();
     }
   }
+}
 
-  // Migrate last commit tracking
-  if (legacyPaths.lastCommit && fs.existsSync(legacyPaths.lastCommit)) {
-    try {
-      const content = fs.readFileSync(legacyPaths.lastCommit, 'utf-8');
-      const data = JSON.parse(content);
-      setCrankState(stateDb, 'last_commit', data);
-      result.crankStateMigrated++;
-    } catch (error) {
-      result.errors.push(`Failed to migrate last commit: ${error}`);
-      result.success = false;
-    }
-  }
+/** Result of backup operation */
+export interface BackupResult {
+  success: boolean;
+  backedUpFiles: string[];
+  errors: string[];
+}
 
-  // Migrate mutation hints
-  if (legacyPaths.hints && fs.existsSync(legacyPaths.hints)) {
-    try {
-      const content = fs.readFileSync(legacyPaths.hints, 'utf-8');
-      const data = JSON.parse(content);
-      setCrankState(stateDb, 'mutation_hints', data);
-      result.crankStateMigrated++;
-    } catch (error) {
-      result.errors.push(`Failed to migrate hints: ${error}`);
-      result.success = false;
+/** Result of delete operation */
+export interface DeleteResult {
+  success: boolean;
+  deletedFiles: string[];
+  errors: string[];
+  error?: string;
+}
+
+/** Options for delete operation */
+export interface DeleteOptions {
+  /** If true, require StateDb to exist before deleting legacy files */
+  requireStateDb?: boolean;
+}
+
+/**
+ * Backup legacy JSON files before migration
+ *
+ * Creates .bak files alongside the originals.
+ * Can accept either a vault path (convenience) or LegacyPaths object.
+ */
+export async function backupLegacyFiles(
+  vaultPathOrLegacyPaths: string | LegacyPaths
+): Promise<BackupResult> {
+  const paths = typeof vaultPathOrLegacyPaths === 'string'
+    ? getLegacyPaths(vaultPathOrLegacyPaths)
+    : vaultPathOrLegacyPaths;
+
+  const result: BackupResult = {
+    success: true,
+    backedUpFiles: [],
+    errors: [],
+  };
+
+  const timestamp = Date.now();
+
+  for (const [key, filePath] of Object.entries(paths)) {
+    if (filePath && typeof filePath === 'string' && fs.existsSync(filePath)) {
+      try {
+        // Create backup with timestamp: file.json -> file.backup.1234567890.json
+        const ext = path.extname(filePath);
+        const base = filePath.slice(0, -ext.length);
+        const backupPath = `${base}.backup.${timestamp}${ext}`;
+        fs.copyFileSync(filePath, backupPath);
+        result.backedUpFiles.push(filePath);
+      } catch (error) {
+        result.errors.push(`Failed to backup ${key}: ${error}`);
+        result.success = false;
+      }
     }
   }
 
@@ -1189,42 +1442,61 @@ export async function migrateFromJsonToSqlite(
 }
 
 /**
- * Backup legacy JSON files before migration
+ * Delete legacy JSON files after successful migration
  *
- * Creates .bak files alongside the originals
+ * Can accept either a vault path (convenience) or LegacyPaths object.
+ * Use options.requireStateDb to ensure StateDb exists before deleting.
  */
-export function backupLegacyFiles(legacyPaths: LegacyPaths): string[] {
-  const backedUp: string[] = [];
+export async function deleteLegacyFiles(
+  vaultPathOrLegacyPaths: string | LegacyPaths,
+  options?: DeleteOptions
+): Promise<DeleteResult> {
+  // Determine vault path for StateDb check
+  let vaultPath: string | undefined;
+  let paths: LegacyPaths;
 
-  for (const [, filePath] of Object.entries(legacyPaths)) {
-    if (filePath && fs.existsSync(filePath)) {
-      const backupPath = filePath + '.bak';
-      fs.copyFileSync(filePath, backupPath);
-      backedUp.push(filePath);
+  if (typeof vaultPathOrLegacyPaths === 'string') {
+    vaultPath = vaultPathOrLegacyPaths;
+    // For deletion, we need to get the full paths, not just existing ones
+    const claudeDir = path.join(vaultPath, '.claude');
+    paths = {
+      config: path.join(claudeDir, '.flywheel.json'),
+      entityCache: path.join(claudeDir, 'wikilink-entities.json'),
+      recency: path.join(claudeDir, 'entity-recency.json'),
+      lastCommit: path.join(claudeDir, 'last-crank-commit.json'),
+      hints: path.join(claudeDir, 'crank-mutation-hints.json'),
+      backlinks: path.join(claudeDir, 'backlinks.json'),
+    };
+  } else {
+    paths = vaultPathOrLegacyPaths;
+  }
+
+  const result: DeleteResult = {
+    success: true,
+    deletedFiles: [],
+    errors: [],
+  };
+
+  // Check requireStateDb option
+  if (options?.requireStateDb && vaultPath) {
+    if (!stateDbExists(vaultPath)) {
+      result.success = false;
+      result.error = 'StateDb does not exist. Migrate before deleting legacy files.';
+      return result;
     }
   }
 
-  return backedUp;
-}
-
-/**
- * Delete legacy JSON files after successful migration
- *
- * Only deletes files that have corresponding .bak backups
- */
-export function deleteLegacyFiles(legacyPaths: LegacyPaths): string[] {
-  const deleted: string[] = [];
-
-  for (const [, filePath] of Object.entries(legacyPaths)) {
-    if (filePath && fs.existsSync(filePath)) {
-      const backupPath = filePath + '.bak';
-      // Only delete if backup exists (safety check)
-      if (fs.existsSync(backupPath)) {
+  for (const [key, filePath] of Object.entries(paths)) {
+    if (filePath && typeof filePath === 'string' && fs.existsSync(filePath)) {
+      try {
         fs.unlinkSync(filePath);
-        deleted.push(filePath);
+        result.deletedFiles.push(filePath);
+      } catch (error) {
+        result.errors.push(`Failed to delete ${key}: ${error}`);
+        result.success = false;
       }
     }
   }
 
-  return deleted;
+  return result;
 }
