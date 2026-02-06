@@ -16,6 +16,7 @@ import {
   deleteStateDb,
   stateDbExists,
   searchEntities,
+  searchEntitiesPrefix,
   getEntityByName,
   getAllEntitiesFromDb,
   getEntityIndexFromDb,
@@ -64,13 +65,13 @@ aliases:
 ---
 # Jordan Smith
 
-Senior engineer working on MCP Server project.
+Senior engineer working on Artemis Launch Project project.
 `,
-        'projects/MCP Server.md': `---
+        'projects/Artemis Launch Project.md': `---
 type: project
 status: active
 ---
-# MCP Server
+# Artemis Launch Project
 
 Implementation led by Jordan.
 `,
@@ -82,8 +83,8 @@ date: 2026-02-02
 
 ## Log
 
-- Met with Jordan Smith to discuss MCP Server progress
-- The MCP Server milestone is on track
+- Met with Jordan Smith to discuss Artemis Launch Project progress
+- The Artemis Launch Project milestone is on track
 `,
       };
 
@@ -101,7 +102,7 @@ date: 2026-02-02
 
       expect(scannedEntities._metadata.total_entities).toBeGreaterThanOrEqual(2);
       expect(scannedEntities.people.some(p => p.name === 'Jordan Smith')).toBe(true);
-      expect(scannedEntities.projects.some(p => p.name === 'MCP Server')).toBe(true);
+      expect(scannedEntities.projects.some(p => p.name === 'Artemis Launch Project')).toBe(true);
 
       // Step 3: Store in SQLite StateDb (shared persistence)
       stateDb = openStateDb(testVaultPath);
@@ -116,11 +117,12 @@ date: 2026-02-02
       );
 
       const allEntities = getAllEntities(scannedEntities);
-      const withWikilinks = applyWikilinks(dailyNoteContent, allEntities);
+      const wikilinkResult = applyWikilinks(dailyNoteContent, allEntities);
+      const withWikilinks = wikilinkResult.content;
 
       // Verify wikilinks were applied
       expect(withWikilinks).toContain('[[Jordan Smith]]');
-      expect(withWikilinks).toContain('[[MCP Server]]');
+      expect(withWikilinks).toContain('[[Artemis Launch Project]]');
 
       // Step 5: Write back and update links in StateDb
       fs.writeFileSync(
@@ -132,8 +134,8 @@ date: 2026-02-02
       // Record the links
       replaceLinksFromSource(stateDb, 'daily-notes/2026-02-02.md', [
         { target: 'Jordan Smith', targetPath: 'people/Jordan Smith.md', lineNumber: 10 },
-        { target: 'MCP Server', targetPath: 'projects/MCP Server.md', lineNumber: 10 },
-        { target: 'MCP Server', targetPath: 'projects/MCP Server.md', lineNumber: 11 },
+        { target: 'Artemis Launch Project', targetPath: 'projects/Artemis Launch Project.md', lineNumber: 10 },
+        { target: 'Artemis Launch Project', targetPath: 'projects/Artemis Launch Project.md', lineNumber: 11 },
       ]);
 
       // Step 6: Verify graph updated (flywheel reads backlinks)
@@ -141,8 +143,8 @@ date: 2026-02-02
       expect(jordanBacklinks.length).toBe(1);
       expect(jordanBacklinks[0].sourcePath).toBe('daily-notes/2026-02-02.md');
 
-      const mcpBacklinks = getBacklinks(stateDb, 'projects/MCP Server.md');
-      expect(mcpBacklinks.length).toBe(2); // Two links to MCP Server
+      const mcpBacklinks = getBacklinks(stateDb, 'projects/Artemis Launch Project.md');
+      expect(mcpBacklinks.length).toBe(2); // Two links to Artemis Launch Project
 
       const dailyOutlinks = getOutlinks(stateDb, 'daily-notes/2026-02-02.md');
       expect(dailyOutlinks.length).toBe(3);
@@ -183,7 +185,8 @@ Software engineer.
 
       // Scan and save cache
       const entities1 = await scanVaultEntities(testVaultPath);
-      await saveEntityCache(testVaultPath, entities1);
+      const cachePath = path.join(testVaultPath, '.claude', 'entity-cache.json');
+      await saveEntityCache(cachePath, entities1);
 
       expect(entities1.people.some(p => p.name === 'Alice Chen')).toBe(true);
 
@@ -251,10 +254,14 @@ Typed JavaScript.
       expect(result).not.toBeNull();
       expect(result!.aliases).toContain('TS');
 
-      // FTS search should match alias text too
+      // FTS search should match alias text
+      const aliasResults = searchEntities(stateDb, 'TS');
+      expect(aliasResults.some(r => r.name === 'TypeScript')).toBe(true);
+
+      // applyWikilinks should match via alias (uses piped format)
       const allEntities = getAllEntities(entities);
-      const suggestions = suggestWikilinks('Working with TS today', allEntities);
-      expect(suggestions.some(s => s.name === 'TypeScript')).toBe(true);
+      const wikilinkResult = applyWikilinks('Working with TS today', allEntities);
+      expect(wikilinkResult.content).toContain('[[TypeScript|TS]]');
     });
   });
 
@@ -282,7 +289,7 @@ Jordan Smith recommends TypeScript for all projects.
       ];
 
       // Apply wikilinks
-      const result = applyWikilinks(content, entities);
+      const result = applyWikilinks(content, entities).content;
 
       // Should link in body text
       expect(result).toContain('[[Jordan Smith]] recommends');
@@ -325,11 +332,11 @@ $$math$$
 
       const zoneTypes = zones.map(z => z.type);
       expect(zoneTypes).toContain('frontmatter');
-      expect(zoneTypes).toContain('code-inline');
-      expect(zoneTypes).toContain('code-block');
-      expect(zoneTypes).toContain('markdown-link');
+      expect(zoneTypes).toContain('inline_code');
+      expect(zoneTypes).toContain('code_block');
+      expect(zoneTypes).toContain('markdown_link');
       expect(zoneTypes).toContain('wikilink');
-      expect(zoneTypes).toContain('math-block');
+      expect(zoneTypes).toContain('math');
     });
   });
 
@@ -344,7 +351,7 @@ $$math$$
           { name: 'Jordan Smith', path: 'people/jordan.md', aliases: ['JS'] },
         ],
         projects: [
-          { name: 'MCP Server', path: 'projects/mcp.md', aliases: [] },
+          { name: 'Artemis Launch Project', path: 'projects/mcp.md', aliases: [] },
         ],
         acronyms: [],
         organizations: [],
@@ -411,11 +418,11 @@ $$math$$
     it('should handle 500 entities efficiently', async () => {
       stateDb = openStateDb(testVaultPath);
 
-      // Generate 500 entities
+      // Generate 500 entities (use names that don't get stemmed by Porter)
       const entities: EntityWithAliases[] = Array.from({ length: 500 }, (_, i) => ({
-        name: `Entity${i}`,
-        path: `entities/entity${i}.md`,
-        aliases: [`E${i}`, `Ent${i}`],
+        name: `TestItem${i}`,
+        path: `entities/testitem${i}.md`,
+        aliases: [`TI${i}`],
         hubScore: Math.floor(Math.random() * 100),
       }));
 
@@ -426,9 +433,9 @@ $$math$$
       expect(count).toBe(500);
       expect(insertDuration).toBeLessThan(500); // Should complete in under 500ms
 
-      // Search should be fast
+      // Search should be fast (use prefix search for FTS5)
       const startSearch = performance.now();
-      const results = searchEntities(stateDb, 'Entity');
+      const results = searchEntitiesPrefix(stateDb, 'TestItem');
       const searchDuration = performance.now() - startSearch;
 
       expect(results.length).toBeGreaterThan(0);
@@ -450,7 +457,7 @@ $$math$$
       ];
 
       const startApply = performance.now();
-      const result = applyWikilinks(content, entities);
+      const result = applyWikilinks(content, entities).content;
       const applyDuration = performance.now() - startApply;
 
       expect(result).toContain('[[TypeScript]]');
