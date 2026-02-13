@@ -241,6 +241,42 @@ Learn React here`;
       expect(result.content).toContain('[[React]]');
       expect(result.content).toContain('[[Product Requirements Document|PRD]]');
     });
+
+    it('should match multi-word alias in plain text', () => {
+      const content = 'The Model Context Protocol enables tool use';
+      const entities = [
+        { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+      ];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toBe('The [[MCP|Model Context Protocol]] enables tool use');
+      expect(result.linksAdded).toBe(1);
+      expect(result.linkedEntities).toContain('MCP');
+    });
+
+    it('should match multi-word alias case-insensitively', () => {
+      const content = 'Learned about model context protocol today';
+      const entities = [
+        { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+      ];
+      const result = applyWikilinks(content, entities, { caseInsensitive: true });
+
+      expect(result.content).toBe('Learned about [[MCP|model context protocol]] today');
+      expect(result.linksAdded).toBe(1);
+    });
+
+    it('should match multi-word alias among other text with entity name', () => {
+      const content = 'A test Model Context Protocol message about MCP';
+      const entities = [
+        { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+      ];
+      const result = applyWikilinks(content, entities, { firstOccurrenceOnly: false });
+
+      // Both the alias and the name should be linked
+      expect(result.content).toContain('[[MCP|Model Context Protocol]]');
+      expect(result.content).toContain('about [[MCP]]');
+      expect(result.linksAdded).toBe(2);
+    });
   });
 });
 

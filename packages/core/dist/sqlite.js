@@ -182,6 +182,17 @@ function initSchema(db) {
     db.pragma('foreign_keys = ON');
     // Run schema creation
     db.exec(SCHEMA_SQL);
+    // Guard: Verify critical tables were created
+    // This catches cases where schema execution silently failed (e.g., corrupted db)
+    const tables = db.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type='table' AND name IN ('entities', 'notes', 'schema_version', 'metadata')
+  `).all();
+    if (tables.length < 4) {
+        const foundTables = tables.map(t => t.name).join(', ') || 'none';
+        throw new Error(`[vault-core] Schema validation failed: expected 4 critical tables, found ${tables.length} (${foundTables}). ` +
+            `Database may be corrupted. Delete ${db.name} and restart.`);
+    }
     // Check and record schema version
     const versionRow = db.prepare('SELECT MAX(version) as version FROM schema_version').get();
     const currentVersion = versionRow?.version ?? 0;
@@ -199,6 +210,23 @@ function initSchema(db) {
  */
 export function openStateDb(vaultPath) {
     const dbPath = getStateDbPath(vaultPath);
+    // Guard: Delete corrupted 0-byte database files
+    // This can happen when better-sqlite3 fails to compile (e.g., Node 24)
+    // and creates an empty file instead of a valid SQLite database
+    if (fs.existsSync(dbPath)) {
+        const stat = fs.statSync(dbPath);
+        if (stat.size === 0) {
+            console.error(`[vault-core] Deleting corrupted 0-byte state.db at ${dbPath}`);
+            fs.unlinkSync(dbPath);
+            // Also remove WAL and SHM files if they exist
+            const walPath = dbPath + '-wal';
+            const shmPath = dbPath + '-shm';
+            if (fs.existsSync(walPath))
+                fs.unlinkSync(walPath);
+            if (fs.existsSync(shmPath))
+                fs.unlinkSync(shmPath);
+        }
+    }
     const db = new Database(dbPath);
     // Initialize schema
     initSchema(db);
