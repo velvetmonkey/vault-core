@@ -123,6 +123,20 @@ Learn React here`;
     expect(result.content).toContain('and the [[API]]');
   });
 
+  it('should prefer shorter entity term when multiple entities match same text', () => {
+    // When "api" appears alone, both "API" (3 chars) and "API Management" (14 chars) could match
+    // via case-insensitive matching. We should prefer "API" as the more exact match.
+    const content = 'the api is broken';
+    const entities = ['API', 'API Management'];
+    const result = applyWikilinks(content, entities);
+
+    // Should link to "API", not "API Management" - shorter entity is more exact
+    expect(result.content).toBe('the [[API]] is broken');
+    expect(result.linksAdded).toBe(1);
+    expect(result.linkedEntities).toContain('API');
+    expect(result.linkedEntities).not.toContain('API Management');
+  });
+
   it('should exclude common words', () => {
     const content = 'Meeting on Monday for the project';
     const entities = ['Monday', 'Project'];

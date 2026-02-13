@@ -138,11 +138,17 @@ export function applyWikilinks(content, entities, options = {}) {
                 allCandidates.push({ entityName, ...m });
             }
         }
-        // Sort by position, then by match length (descending)
+        // Sort by position, then by match length (descending), then by term length (ascending)
+        // The term length tiebreaker ensures "API" wins over "API Management" when both match "api"
         allCandidates.sort((a, b) => {
+            // Primary: earliest position first
             if (a.match.start !== b.match.start)
                 return a.match.start - b.match.start;
-            return b.match.matched.length - a.match.matched.length;
+            // Secondary: longest matched text first
+            if (a.match.matched.length !== b.match.matched.length)
+                return b.match.matched.length - a.match.matched.length;
+            // Tertiary: shorter entity term first (more exact match)
+            return a.term.length - b.term.length;
         });
         // Select non-overlapping matches, preferring longer ones at same position
         // Each entity gets at most one match
