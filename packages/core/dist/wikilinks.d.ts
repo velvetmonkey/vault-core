@@ -20,6 +20,9 @@ export declare function applyWikilinks(content: string, entities: Entity[], opti
 /**
  * Suggest wikilinks without applying them
  * Returns a list of potential links with their positions
+ *
+ * Supports both entity names and aliases - if content matches an alias,
+ * the suggestion will contain the canonical entity name.
  */
 export declare function suggestWikilinks(content: string, entities: Entity[], options?: WikilinkOptions): Array<{
     entity: string;
