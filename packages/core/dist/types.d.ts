@@ -149,4 +149,14 @@ export interface ImplicitEntityMatch {
     /** Detection method used */
     pattern: 'proper-nouns' | 'quoted-terms' | 'single-caps';
 }
+/**
+ * Options for resolving alias-based wikilinks
+ */
+export interface ResolveAliasOptions {
+    /**
+     * Case-insensitive matching for aliases
+     * @default true
+     */
+    caseInsensitive?: boolean;
+}
 //# sourceMappingURL=types.d.ts.map

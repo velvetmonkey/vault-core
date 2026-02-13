@@ -4,10 +4,11 @@
  * Applies [[wikilinks]] to known entities in content while
  * respecting protected zones (code, frontmatter, existing links, etc.)
  *
- * Also supports pattern-based detection for implicit entities
- * (proper nouns, quoted terms) that don't have existing files.
+ * Also supports:
+ * - Pattern-based detection for implicit entities (proper nouns, quoted terms)
+ * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
-import type { WikilinkOptions, WikilinkResult, Entity, ExtendedWikilinkOptions, ImplicitEntityMatch, ImplicitEntityConfig } from './types.js';
+import type { WikilinkOptions, WikilinkResult, Entity, ExtendedWikilinkOptions, ImplicitEntityMatch, ImplicitEntityConfig, ResolveAliasOptions } from './types.js';
 /**
  * Apply wikilinks to entities in content
  *
@@ -30,6 +31,22 @@ export declare function suggestWikilinks(content: string, entities: Entity[], op
     end: number;
     context: string;
 }>;
+/**
+ * Resolve wikilinks that target aliases to their canonical entity names
+ *
+ * When a user types [[model context protocol]], and "Model Context Protocol"
+ * is an alias for entity "MCP", this function transforms it to:
+ * [[MCP|model context protocol]]
+ *
+ * This preserves the user's original text as display text while resolving
+ * to the canonical entity target.
+ *
+ * @param content - The markdown content to process
+ * @param entities - List of entity names or Entity objects to look for
+ * @param options - Resolution options
+ * @returns Result with updated content and statistics
+ */
+export declare function resolveAliasWikilinks(content: string, entities: Entity[], options?: ResolveAliasOptions): WikilinkResult;
 /**
  * Detect implicit entities in content using pattern matching
  *

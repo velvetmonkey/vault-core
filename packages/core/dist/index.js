@@ -9,7 +9,7 @@ export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityNa
 // Protected zones
 export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, findFrontmatterEnd, } from './protectedZones.js';
 // Wikilinks
-export { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, } from './wikilinks.js';
+export { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, resolveAliasWikilinks, } from './wikilinks.js';
 // Logging (unified cross-product logging)
 export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, clearSession, createChildSession, getParentSession, isChildSession, DEFAULT_LOGGING_CONFIG, } from './logging/index.js';
 // SQLite State Database
