@@ -19,13 +19,6 @@ import type {
 import { getProtectedZones, rangeOverlapsProtectedZone } from './protectedZones.js';
 
 /**
- * Get entity name from Entity (handles both string and object formats)
- */
-function extractEntityName(entity: Entity): string {
-  return typeof entity === 'string' ? entity : entity.name;
-}
-
-/**
  * Get all search terms for an entity (name + aliases)
  * Returns tuples of [searchTerm, entityName] for proper linking
  */

@@ -141,9 +141,13 @@ function extractAliasesFromContent(content: string): string[] {
   const aliases: string[] = [];
   for (let i = aliasIdx + 1; i < lines.length; i++) {
     const line = lines[i];
-    // Stop at next top-level key or empty line
-    if (/^[a-z_]+:/i.test(line) || line.trim() === '') {
+    // Stop at next top-level key (letter/underscore at start of line followed by colon)
+    if (/^[a-z_]+:/i.test(line)) {
       break;
+    }
+    // Skip empty lines but continue parsing (YAML lists can have blank lines)
+    if (line.trim() === '') {
+      continue;
     }
     // Match list item: - Alias or - "Alias"
     const listMatch = line.match(/^\s*-\s*["']?(.+?)["']?\s*$/);
