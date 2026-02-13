@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks } from '../src/wikilinks.js';
+import { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, resolveAliasWikilinks } from '../src/wikilinks.js';
 
 describe('applyWikilinks', () => {
   it('should apply wikilinks to matching entities', () => {
@@ -606,5 +606,143 @@ describe('processWikilinks', () => {
     expect(result.linksAdded).toBe(3);
     expect(result.linkedEntities).toContain('React');
     expect(result.implicitEntities).toHaveLength(2);
+  });
+});
+
+describe('resolveAliasWikilinks', () => {
+  it('should resolve alias wikilink to canonical entity', () => {
+    const content = 'See [[model context protocol]] for details';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('See [[MCP|model context protocol]] for details');
+    expect(result.linksAdded).toBe(1);
+    expect(result.linkedEntities).toContain('MCP');
+  });
+
+  it('should preserve existing display text', () => {
+    const content = 'See [[model context protocol|the protocol]] for details';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('See [[MCP|the protocol]] for details');
+    expect(result.linksAdded).toBe(1);
+  });
+
+  it('should not modify wikilinks already using entity name', () => {
+    const content = 'See [[MCP]] for details';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('See [[MCP]] for details');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should handle multiple alias wikilinks', () => {
+    const content = 'Using [[model context protocol]] with [[azure data factory]]';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] },
+      { name: 'ADF', path: 'ADF.md', aliases: ['Azure Data Factory'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toContain('[[MCP|model context protocol]]');
+    expect(result.content).toContain('[[ADF|azure data factory]]');
+    expect(result.linksAdded).toBe(2);
+    expect(result.linkedEntities).toContain('MCP');
+    expect(result.linkedEntities).toContain('ADF');
+  });
+
+  it('should be case-insensitive by default', () => {
+    const content = 'See [[MODEL CONTEXT PROTOCOL]] for info';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    // Preserves user's original casing in display text
+    expect(result.content).toBe('See [[MCP|MODEL CONTEXT PROTOCOL]] for info');
+    expect(result.linksAdded).toBe(1);
+  });
+
+  it('should respect case-sensitive option when disabled', () => {
+    const content = 'See [[MODEL CONTEXT PROTOCOL]] for info';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities, { caseInsensitive: false });
+
+    // Should not resolve because case doesn't match exactly
+    expect(result.content).toBe('See [[MODEL CONTEXT PROTOCOL]] for info');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should not modify wikilinks that dont match any alias', () => {
+    const content = 'See [[Unknown Entity]] for details';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('See [[Unknown Entity]] for details');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should handle string entities (no aliases)', () => {
+    const content = 'See [[React]] for details';
+    const entities = ['React', 'TypeScript'];
+    const result = resolveAliasWikilinks(content, entities);
+
+    // String entities have no aliases, so nothing to resolve
+    expect(result.content).toBe('See [[React]] for details');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should handle wikilink with entity name as display text', () => {
+    const content = 'See [[model context protocol|MCP]] for info';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    // Target resolves to entity, preserves existing display text
+    expect(result.content).toBe('See [[MCP|MCP]] for info');
+    expect(result.linksAdded).toBe(1);
+  });
+
+  it('should handle empty entities array', () => {
+    const content = 'See [[some link]] for details';
+    const result = resolveAliasWikilinks(content, []);
+
+    expect(result.content).toBe('See [[some link]] for details');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should handle content with no wikilinks', () => {
+    const content = 'Just plain text without any links';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('Just plain text without any links');
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('should handle mixed resolved and unresolved wikilinks', () => {
+    const content = 'Using [[model context protocol]] and [[React]] together';
+    const entities = [
+      { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
+    ];
+    const result = resolveAliasWikilinks(content, entities);
+
+    expect(result.content).toBe('Using [[MCP|model context protocol]] and [[React]] together');
+    expect(result.linksAdded).toBe(1);
   });
 });

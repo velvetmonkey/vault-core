@@ -20,6 +20,7 @@ export type {
   ImplicitEntityConfig,
   ExtendedWikilinkOptions,
   ImplicitEntityMatch,
+  ResolveAliasOptions,
 } from './types.js';
 
 // Entity scanning
@@ -49,6 +50,7 @@ export {
   suggestWikilinks,
   detectImplicitEntities,
   processWikilinks,
+  resolveAliasWikilinks,
 } from './wikilinks.js';
 
 // Logging (unified cross-product logging)

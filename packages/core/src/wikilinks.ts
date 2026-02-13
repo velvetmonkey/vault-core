@@ -4,8 +4,9 @@
  * Applies [[wikilinks]] to known entities in content while
  * respecting protected zones (code, frontmatter, existing links, etc.)
  *
- * Also supports pattern-based detection for implicit entities
- * (proper nouns, quoted terms) that don't have existing files.
+ * Also supports:
+ * - Pattern-based detection for implicit entities (proper nouns, quoted terms)
+ * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
 
 import type {
@@ -15,6 +16,7 @@ import type {
   ExtendedWikilinkOptions,
   ImplicitEntityMatch,
   ImplicitEntityConfig,
+  ResolveAliasOptions,
 } from './types.js';
 import { getProtectedZones, rangeOverlapsProtectedZone } from './protectedZones.js';
 
@@ -434,6 +436,125 @@ export function suggestWikilinks(
   }
 
   return suggestions;
+}
+
+/**
+ * Resolve wikilinks that target aliases to their canonical entity names
+ *
+ * When a user types [[model context protocol]], and "Model Context Protocol"
+ * is an alias for entity "MCP", this function transforms it to:
+ * [[MCP|model context protocol]]
+ *
+ * This preserves the user's original text as display text while resolving
+ * to the canonical entity target.
+ *
+ * @param content - The markdown content to process
+ * @param entities - List of entity names or Entity objects to look for
+ * @param options - Resolution options
+ * @returns Result with updated content and statistics
+ */
+export function resolveAliasWikilinks(
+  content: string,
+  entities: Entity[],
+  options: ResolveAliasOptions = {}
+): WikilinkResult {
+  const { caseInsensitive = true } = options;
+
+  if (!entities.length) {
+    return {
+      content,
+      linksAdded: 0,
+      linkedEntities: [],
+    };
+  }
+
+  // Build alias → entity lookup map
+  // Key: alias (lowercase if caseInsensitive)
+  // Value: { entityName: canonical name, aliasText: original alias casing }
+  const aliasMap = new Map<string, { entityName: string; aliasText: string }>();
+
+  for (const entity of entities) {
+    if (typeof entity === 'string') continue;
+
+    for (const alias of entity.aliases) {
+      const key = caseInsensitive ? alias.toLowerCase() : alias;
+      aliasMap.set(key, { entityName: entity.name, aliasText: alias });
+    }
+
+    // Also map the entity name itself so we can detect if target already points to entity
+    const nameKey = caseInsensitive ? entity.name.toLowerCase() : entity.name;
+    // Don't overwrite if name happens to be an alias of another entity
+    if (!aliasMap.has(nameKey)) {
+      aliasMap.set(nameKey, { entityName: entity.name, aliasText: entity.name });
+    }
+  }
+
+  // Find wikilinks: [[target]] or [[target|display]]
+  const wikilinkRegex = /\[\[([^\]|]+)(\|[^\]]+)?\]\]/g;
+  let result = content;
+  let linksResolved = 0;
+  const resolvedEntities: string[] = [];
+
+  // Collect all matches first, then process from end to preserve positions
+  const matches: Array<{
+    fullMatch: string;
+    target: string;
+    displayPart: string | undefined;
+    index: number;
+  }> = [];
+
+  let match: RegExpExecArray | null;
+  while ((match = wikilinkRegex.exec(content)) !== null) {
+    matches.push({
+      fullMatch: match[0],
+      target: match[1],
+      displayPart: match[2], // includes | if present
+      index: match.index,
+    });
+  }
+
+  // Process from end to start to preserve positions
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { fullMatch, target, displayPart, index } = matches[i];
+    const targetKey = caseInsensitive ? target.toLowerCase() : target;
+
+    // Check if target matches an alias
+    const aliasInfo = aliasMap.get(targetKey);
+    if (!aliasInfo) {
+      // Target doesn't match any alias or entity name - leave unchanged
+      continue;
+    }
+
+    // Check if already pointing to the entity name (no resolution needed)
+    const entityNameKey = caseInsensitive ? aliasInfo.entityName.toLowerCase() : aliasInfo.entityName;
+    if (targetKey === entityNameKey) {
+      // Already pointing to entity name, no change needed
+      continue;
+    }
+
+    // Target matches an alias! Resolve to canonical entity
+    let newWikilink: string;
+    if (displayPart) {
+      // Has existing display text: [[alias|display]] → [[Entity|display]]
+      newWikilink = `[[${aliasInfo.entityName}${displayPart}]]`;
+    } else {
+      // No display text: [[alias]] → [[Entity|alias]]
+      // Preserve the user's original casing of the alias
+      newWikilink = `[[${aliasInfo.entityName}|${target}]]`;
+    }
+
+    result = result.slice(0, index) + newWikilink + result.slice(index + fullMatch.length);
+    linksResolved++;
+    if (!resolvedEntities.includes(aliasInfo.entityName)) {
+      resolvedEntities.push(aliasInfo.entityName);
+    }
+  }
+
+  return {
+    content: result,
+    linksAdded: linksResolved,
+    linkedEntities: resolvedEntities,
+  };
 }
 
 /**
