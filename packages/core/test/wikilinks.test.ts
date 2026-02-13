@@ -273,6 +273,95 @@ describe('suggestWikilinks', () => {
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].start).toBeGreaterThan(content.indexOf('`React`'));
   });
+
+  describe('alias matching', () => {
+    it('should suggest entity when content matches alias', () => {
+      const content = 'Check the PRD for details';
+      const entities = [
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities);
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].entity).toBe('Product Requirements Document');
+    });
+
+    it('should suggest entity when content matches name', () => {
+      const content = 'The API is documented';
+      const entities = [
+        { name: 'API', path: 'API.md', aliases: ['Application Programming Interface'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities);
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].entity).toBe('API');
+    });
+
+    it('should handle multiple aliases for same entity', () => {
+      const content = 'The JS framework uses ECMAScript standards';
+      const entities = [
+        { name: 'JavaScript', path: 'JavaScript.md', aliases: ['JS', 'ECMAScript'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities, { firstOccurrenceOnly: false });
+
+      expect(suggestions).toHaveLength(2);
+      expect(suggestions.every(s => s.entity === 'JavaScript')).toBe(true);
+    });
+
+    it('should suggest first occurrence only across name and aliases', () => {
+      const content = 'JS is fun. JavaScript is powerful.';
+      const entities = [
+        { name: 'JavaScript', path: 'JavaScript.md', aliases: ['JS'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities, { firstOccurrenceOnly: true });
+
+      // Only first match (JS) should be suggested
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].entity).toBe('JavaScript');
+      expect(suggestions[0].start).toBe(0); // JS is at the start
+    });
+
+    it('should prioritize longer alias matches', () => {
+      const content = 'Working with API Management and the API';
+      const entities = [
+        { name: 'API', path: 'API.md', aliases: [] },
+        { name: 'API Management Platform', path: 'API Management Platform.md', aliases: ['API Management'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities);
+
+      // Should have both suggestions
+      expect(suggestions).toHaveLength(2);
+      // First suggestion should be for the longer match
+      const apiMgmtSuggestion = suggestions.find(s => s.entity === 'API Management Platform');
+      const apiSuggestion = suggestions.find(s => s.entity === 'API');
+      expect(apiMgmtSuggestion).toBeDefined();
+      expect(apiSuggestion).toBeDefined();
+    });
+
+    it('should work with string entities mixed with object entities', () => {
+      const content = 'Using React and the PRD';
+      const entities = [
+        'React',
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities);
+
+      expect(suggestions).toHaveLength(2);
+      expect(suggestions.map(s => s.entity)).toContain('React');
+      expect(suggestions.map(s => s.entity)).toContain('Product Requirements Document');
+    });
+
+    it('should find alias case-insensitively', () => {
+      const content = 'Check the prd for details';
+      const entities = [
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities, { caseInsensitive: true });
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].entity).toBe('Product Requirements Document');
+    });
+  });
 });
 
 describe('detectImplicitEntities', () => {

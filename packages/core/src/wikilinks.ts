@@ -323,6 +323,9 @@ export function applyWikilinks(
 /**
  * Suggest wikilinks without applying them
  * Returns a list of potential links with their positions
+ *
+ * Supports both entity names and aliases - if content matches an alias,
+ * the suggestion will contain the canonical entity name.
  */
 export function suggestWikilinks(
   content: string,
@@ -345,22 +348,76 @@ export function suggestWikilinks(
     return suggestions;
   }
 
-  // Extract entity names, filter and sort
-  const sortedEntities = entities
-    .map(e => extractEntityName(e))
-    .filter(e => !shouldExcludeEntity(e))
-    .sort((a, b) => b.length - a.length);
+  // Build search terms from all entities (names + aliases)
+  // Each term maps back to its canonical entity name
+  const allSearchTerms: Array<{ term: string; entityName: string }> = [];
+  for (const entity of entities) {
+    const terms = getSearchTerms(entity);
+    for (const t of terms) {
+      if (!shouldExcludeEntity(t.term)) {
+        allSearchTerms.push(t);
+      }
+    }
+  }
+
+  // Sort by term length (longest first) to prioritize longer matches
+  allSearchTerms.sort((a, b) => b.term.length - a.term.length);
 
   // Get protected zones
   const zones = getProtectedZones(content);
-  const alreadySuggested = new Set<string>();
 
-  for (const entity of sortedEntities) {
-    if (firstOccurrenceOnly && alreadySuggested.has(entity.toLowerCase())) {
-      continue;
+  if (firstOccurrenceOnly) {
+    // For firstOccurrenceOnly mode, find the earliest match across all terms
+    // for each entity, similar to applyWikilinks behavior
+    const entityAllMatches = new Map<string, Array<{ match: { start: number; end: number }; entityName: string }>>();
+
+    for (const { term, entityName } of allSearchTerms) {
+      const entityKey = entityName.toLowerCase();
+      const matches = findEntityMatches(content, term, caseInsensitive);
+
+      // Filter out matches in protected zones
+      const validMatches = matches.filter(
+        match => !rangeOverlapsProtectedZone(match.start, match.end, zones)
+      );
+
+      if (validMatches.length === 0) continue;
+
+      // Add to entity's matches
+      const existingMatches = entityAllMatches.get(entityKey) || [];
+      for (const match of validMatches) {
+        existingMatches.push({ match, entityName });
+      }
+      entityAllMatches.set(entityKey, existingMatches);
     }
 
-    const matches = findEntityMatches(content, entity, caseInsensitive);
+    // For each entity, pick the earliest match
+    const selectedSuggestions: Array<{ entity: string; start: number; end: number; context: string }> = [];
+
+    for (const [_entityKey, matches] of entityAllMatches.entries()) {
+      // Sort by position and pick the earliest
+      matches.sort((a, b) => a.match.start - b.match.start);
+      const earliest = matches[0];
+
+      const contextStart = Math.max(0, earliest.match.start - 20);
+      const contextEnd = Math.min(content.length, earliest.match.end + 20);
+      const context = content.slice(contextStart, contextEnd);
+
+      selectedSuggestions.push({
+        entity: earliest.entityName,
+        start: earliest.match.start,
+        end: earliest.match.end,
+        context: contextStart > 0 ? '...' + context : context,
+      });
+    }
+
+    // Sort suggestions by position
+    selectedSuggestions.sort((a, b) => a.start - b.start);
+    return selectedSuggestions;
+  }
+
+  // For all occurrences mode, process each term
+  for (const { term, entityName } of allSearchTerms) {
+    const matches = findEntityMatches(content, term, caseInsensitive);
 
     for (const match of matches) {
       // Skip if in protected zone
@@ -373,17 +430,13 @@ export function suggestWikilinks(
       const contextEnd = Math.min(content.length, match.end + 20);
       const context = content.slice(contextStart, contextEnd);
 
+      // Return the canonical entity name, not the matched term
       suggestions.push({
-        entity,
+        entity: entityName,
         start: match.start,
         end: match.end,
         context: contextStart > 0 ? '...' + context : context,
       });
-
-      if (firstOccurrenceOnly) {
-        alreadySuggested.add(entity.toLowerCase());
-        break;
-      }
     }
   }
 
