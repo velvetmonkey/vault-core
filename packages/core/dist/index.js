@@ -5,17 +5,15 @@
  * Used by both Flywheel (read) and Flywheel-Crank (write).
  */
 // Entity scanning
-export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, filterPeriodicNotes, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
-// Protected zones
-export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, findFrontmatterEnd, } from './protectedZones.js';
+export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, ENTITY_CACHE_VERSION, } from './entities.js';
 // Wikilinks
-export { applyWikilinks, suggestWikilinks, detectImplicitEntities, processWikilinks, resolveAliasWikilinks, } from './wikilinks.js';
+export { applyWikilinks, processWikilinks, resolveAliasWikilinks, } from './wikilinks.js';
 // Logging (unified cross-product logging)
-export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, clearSession, createChildSession, getParentSession, isChildSession, DEFAULT_LOGGING_CONFIG, } from './logging/index.js';
+export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, } from './logging/index.js';
 // SQLite State Database
-export { openStateDb, deleteStateDb, stateDbExists, getStateDbPath, searchEntities, searchEntitiesPrefix, getEntityByName, getEntitiesByAlias, getAllEntitiesFromDb, getEntityIndexFromDb, recordEntityMention, getEntityRecency, getAllRecency, setCrankState, getCrankState, deleteCrankState, 
+export { openStateDb, deleteStateDb, searchEntities, searchEntitiesPrefix, getEntityByName, getEntitiesByAlias, getAllEntitiesFromDb, getEntityIndexFromDb, recordEntityMention, getAllRecency, setCrankState, getCrankState, deleteCrankState, 
 // Flywheel Config
-setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, deleteFlywheelConfig, saveFlywheelConfigToDb, loadFlywheelConfigFromDb, getStateDbMetadata, isEntityDataStale, escapeFts5Query, 
+setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, saveFlywheelConfigToDb, loadFlywheelConfigFromDb, getStateDbMetadata, 
 // Vault Index Cache
-saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, clearVaultIndexCache, isVaultIndexCacheValid, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
+saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
 //# sourceMappingURL=index.js.map
