@@ -23,24 +23,6 @@ export interface EntitySearchResult {
     hubScore: number;
     rank: number;
 }
-/** Note metadata stored in database */
-export interface NoteRow {
-    id: number;
-    path: string;
-    title: string;
-    contentHash: string | null;
-    modifiedAt: number;
-    aliases: string[];
-    tags: string[];
-}
-/** Link between notes */
-export interface LinkRow {
-    id: number;
-    sourcePath: string;
-    target: string;
-    targetPath: string | null;
-    lineNumber: number | null;
-}
 /** Recency tracking for entities */
 export interface RecencyRow {
     entityNameLower: string;
@@ -69,11 +51,7 @@ export interface StateDb {
     getEntitiesByCategory: Statement;
     searchEntitiesFts: Statement;
     clearEntities: Statement;
-    insertLink: Statement;
-    deleteLinksFromSource: Statement;
-    getBacklinks: Statement;
-    getOutlinks: Statement;
-    clearLinks: Statement;
+    getEntitiesByAlias: Statement;
     upsertRecency: Statement;
     getRecency: Statement;
     getAllRecency: Statement;
@@ -85,21 +63,14 @@ export interface StateDb {
     getFlywheelConfigStmt: Statement;
     getAllFlywheelConfigStmt: Statement;
     deleteFlywheelConfigStmt: Statement;
-    insertNote: Statement;
-    updateNote: Statement;
-    deleteNote: Statement;
-    getNoteByPath: Statement;
-    getAllNotes: Statement;
-    clearNotes: Statement;
     getMetadataValue: Statement;
     setMetadataValue: Statement;
     bulkInsertEntities: Transaction<(entities: EntityWithAliases[], category: EntityCategory) => number>;
-    bulkInsertLinks: Transaction<(links: Omit<LinkRow, 'id'>[]) => number>;
     replaceAllEntities: Transaction<(index: EntityIndex) => number>;
     close: () => void;
 }
 /** Current schema version - bump when schema changes */
-export declare const SCHEMA_VERSION = 1;
+export declare const SCHEMA_VERSION = 2;
 /** State database filename */
 export declare const STATE_DB_FILENAME = "state.db";
 /** Directory for flywheel state */
@@ -145,17 +116,13 @@ export declare function getAllEntitiesFromDb(stateDb: StateDb): EntitySearchResu
  */
 export declare function getEntityIndexFromDb(stateDb: StateDb): EntityIndex;
 /**
- * Get all notes that link to a given path (backlinks)
+ * Get entities that have a given alias (case-insensitive)
+ *
+ * @param stateDb - State database instance
+ * @param alias - Alias to search for (case-insensitive)
+ * @returns Array of matching entities
  */
-export declare function getBacklinks(stateDb: StateDb, targetPath: string): LinkRow[];
-/**
- * Get all links from a given note (outlinks)
- */
-export declare function getOutlinks(stateDb: StateDb, sourcePath: string): LinkRow[];
-/**
- * Replace all links from a source note
- */
-export declare function replaceLinksFromSource(stateDb: StateDb, sourcePath: string, links: Omit<LinkRow, 'id' | 'sourcePath'>[]): void;
+export declare function getEntitiesByAlias(stateDb: StateDb, alias: string): EntitySearchResult[];
 /**
  * Record a mention of an entity
  */
@@ -291,78 +258,4 @@ export declare function clearVaultIndexCache(stateDb: StateDb): void;
  * @param maxAgeMs - Maximum cache age in milliseconds (default 24 hours)
  */
 export declare function isVaultIndexCacheValid(stateDb: StateDb, actualNoteCount: number, maxAgeMs?: number): boolean;
-/** Result of a migration operation */
-export interface MigrationResult {
-    success: boolean;
-    entitiesMigrated: number;
-    recencyMigrated: number;
-    crankStateMigrated: number;
-    linksMigrated: number;
-    configMigrated: boolean;
-    /** True if no legacy files were found to migrate */
-    skipped: boolean;
-    errors: string[];
-}
-/** Paths to legacy JSON files */
-export interface LegacyPaths {
-    config?: string | null;
-    entityCache?: string | null;
-    recency?: string | null;
-    lastCommit?: string | null;
-    hints?: string | null;
-    backlinks?: string | null;
-}
-/**
- * Get default legacy file paths for a vault
- * Returns null for paths that don't exist (for easy checking)
- */
-export declare function getLegacyPaths(vaultPath: string): LegacyPaths;
-/**
- * Migrate legacy JSON files to SQLite state database
- *
- * This function reads existing JSON state files and imports them
- * into the consolidated SQLite database. It does NOT delete the
- * original JSON files - that should be done manually after verifying
- * the migration was successful.
- *
- * Can be called with just a vault path (convenience) or with
- * an existing StateDb and legacy paths (for more control).
- *
- * @param stateDbOrVaultPath - Open state database OR vault path string
- * @param legacyPaths - Paths to legacy JSON files (optional if vault path provided)
- * @returns Migration result with counts and any errors
- */
-export declare function migrateFromJsonToSqlite(stateDbOrVaultPath: StateDb | string, legacyPaths?: LegacyPaths): Promise<MigrationResult>;
-/** Result of backup operation */
-export interface BackupResult {
-    success: boolean;
-    backedUpFiles: string[];
-    errors: string[];
-}
-/** Result of delete operation */
-export interface DeleteResult {
-    success: boolean;
-    deletedFiles: string[];
-    errors: string[];
-    error?: string;
-}
-/** Options for delete operation */
-export interface DeleteOptions {
-    /** If true, require StateDb to exist before deleting legacy files */
-    requireStateDb?: boolean;
-}
-/**
- * Backup legacy JSON files before migration
- *
- * Creates .bak files alongside the originals.
- * Can accept either a vault path (convenience) or LegacyPaths object.
- */
-export declare function backupLegacyFiles(vaultPathOrLegacyPaths: string | LegacyPaths): Promise<BackupResult>;
-/**
- * Delete legacy JSON files after successful migration
- *
- * Can accept either a vault path (convenience) or LegacyPaths object.
- * Use options.requireStateDb to ensure StateDb exists before deleting.
- */
-export declare function deleteLegacyFiles(vaultPathOrLegacyPaths: string | LegacyPaths, options?: DeleteOptions): Promise<DeleteResult>;
 //# sourceMappingURL=sqlite.d.ts.map
