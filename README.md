@@ -1,21 +1,22 @@
-> **Part of the Flywheel Suite:** Shared foundation for vault operations. See [Flywheel](https://github.com/velvetmonkey/flywheel) for graph intelligence and [Flywheel-Crank](https://github.com/velvetmonkey/flywheel-crank) for safe mutations.
-
-# vault-core Monorepo
-
-Shared infrastructure for the Flywheel ecosystem.
+<div align="center">
+  <img src="flywheel.png" alt="Flywheel" width="256"/>
+  <h1>vault-core</h1>
+  <p><strong>Shared infrastructure for the Flywheel ecosystem.</strong><br/>Entity scanning, wikilink application, protected zones, and benchmark tooling.</p>
+</div>
 
 [![CI](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Scale](https://img.shields.io/badge/scale-100k%20notes-brightgreen.svg)](./packages/bench/README.md)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue.svg)](https://github.com/velvetmonkey/vault-core)
 
 ## Verified Capabilities
 
-✅ **100k Note Scale** - Vault generation and benchmarking tested at 100,000 notes
-✅ **Iteration Stress** - 10,000+ sequential operations without corruption
-✅ **Cross-Platform** - Tested on Ubuntu, Windows, macOS (Intel + ARM)
-✅ **Entity Detection** - Porter stemmer + Adamic-Adar scoring for wikilink inference
-✅ **Protected Zones** - Code blocks, frontmatter, existing links preserved
+- **100k Note Scale** -- Vault generation and benchmarking tested at 100,000 notes
+- **Iteration Stress** -- 10,000+ sequential operations without corruption
+- **Cross-Platform** -- Tested on Ubuntu, Windows, macOS (Intel + ARM)
+- **Entity Detection** -- Porter stemmer + Adamic-Adar scoring for wikilink inference
+- **Protected Zones** -- Code blocks, frontmatter, existing links preserved
 
 ---
 
@@ -25,34 +26,6 @@ Shared infrastructure for the Flywheel ecosystem.
 |---------|-------------|-----|
 | **[@velvetmonkey/vault-core](./packages/core)** | Shared vault utilities (entity scanning, protected zones, wikilinks) | [![npm](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core) |
 | **[@velvetmonkey/flywheel-bench](./packages/bench)** | Benchmark infrastructure (vault generation, performance testing, reliability) | [![npm](https://img.shields.io/npm/v/@velvetmonkey/flywheel-bench.svg)](https://www.npmjs.com/package/@velvetmonkey/flywheel-bench) |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────┐
-│           Flywheel (read)               │
-│      44 graph intelligence tools        │
-└──────────────────┬──────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────┐
-│           vault-core                    │
-│  Entity scanning · Protected zones ·    │
-│  Wikilink application · Logging         │
-├─────────────────────────────────────────┤
-│           flywheel-bench                │
-│  Vault generation · Benchmarks ·        │
-│  Reliability testing                    │
-└──────────────────┬──────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────┐
-│        Flywheel-Crank (write)           │
-│        11 mutation tools                │
-└─────────────────────────────────────────┘
-```
 
 ---
 
@@ -156,18 +129,16 @@ npm run check-regression -- results.json
 
 ## Documentation
 
-- [Testing Guide](./docs/TESTING.md) - Test infrastructure and methodology
-- [Scale Benchmarks](./docs/SCALE_BENCHMARKS.md) - Performance targets and results
+- [Testing Guide](./docs/TESTING.md) -- Test infrastructure and methodology
+- [Scale Benchmarks](./docs/SCALE_BENCHMARKS.md) -- Performance targets and results
 
 ---
 
 ## vault-core Package
 
-Shared utilities used by both Flywheel and Flywheel-Crank:
+Shared utilities for entity scanning, wikilink application, and vault operations.
 
 ### Entity Scanning
-
-Scan Obsidian vaults to build entity indexes:
 
 ```typescript
 import { scanVaultEntities, getAllEntities } from '@velvetmonkey/vault-core';
@@ -218,11 +189,9 @@ await logger.wrap('search_notes', async () => {
 
 ## flywheel-bench Package
 
-Testing infrastructure for the Flywheel ecosystem:
+Testing infrastructure for the Flywheel ecosystem.
 
 ### Vault Generation
-
-Generate reproducible test vaults:
 
 ```typescript
 import { generateVault, VAULT_PRESETS } from '@velvetmonkey/flywheel-bench';
@@ -236,8 +205,6 @@ await generateVault({
 
 ### Benchmark Harness
 
-Run and compare benchmarks:
-
 ```typescript
 import { BenchmarkRunner, detectRegressions } from '@velvetmonkey/flywheel-bench';
 
@@ -248,8 +215,6 @@ const regressions = detectRegressions(results, baseline);
 
 ### Reliability Testing
 
-Validate mutation reliability:
-
 ```typescript
 import { runAllReliabilityTests } from '@velvetmonkey/flywheel-bench';
 
@@ -259,11 +224,6 @@ console.log(`Passed: ${summary.passed}/${summary.total}`);
 
 ---
 
-## Related Projects
+Part of the [Flywheel](https://github.com/velvetmonkey/flywheel) ecosystem. Primary consumer: [Flywheel Memory](https://github.com/velvetmonkey/flywheel-memory).
 
-- [Flywheel](https://github.com/velvetmonkey/flywheel) — Read-only graph intelligence MCP server
-- [Flywheel-Crank](https://github.com/velvetmonkey/flywheel-crank) — Safe mutation MCP server
-
----
-
-Apache-2.0 License · [GitHub](https://github.com/velvetmonkey/vault-core) · [Issues](https://github.com/velvetmonkey/vault-core/issues)
+Apache-2.0 License -- [GitHub](https://github.com/velvetmonkey/vault-core) -- [Issues](https://github.com/velvetmonkey/vault-core/issues)
