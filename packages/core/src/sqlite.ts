@@ -85,6 +85,12 @@ export interface StateDb {
   getAllFlywheelConfigStmt: Statement;
   deleteFlywheelConfigStmt: Statement;
 
+  // Task cache operations
+  insertTask: Statement;
+  deleteTasksForPath: Statement;
+  clearAllTasks: Statement;
+  countTasksByStatus: Statement;
+
   // Metadata
   getMetadataValue: Statement;
   setMetadataValue: Statement;
@@ -102,7 +108,7 @@ export interface StateDb {
 // =============================================================================
 
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 13;
 
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
@@ -203,8 +209,9 @@ CREATE TABLE IF NOT EXISTS write_state (
 );
 
 -- Content search FTS5 (migrated from vault-search.db)
+-- v11: Added frontmatter column for weighted search (path, title, frontmatter, content)
 CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
-  path, title, content,
+  path, title, frontmatter, content,
   tokenize='porter'
 );
 
@@ -229,6 +236,129 @@ CREATE TABLE IF NOT EXISTS flywheel_config (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Vault metrics (v4: growth tracking)
+CREATE TABLE IF NOT EXISTS vault_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vault_metrics_ts ON vault_metrics(timestamp);
+CREATE INDEX IF NOT EXISTS idx_vault_metrics_m ON vault_metrics(metric, timestamp);
+
+-- Wikilink feedback (v4: quality tracking)
+CREATE TABLE IF NOT EXISTS wikilink_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity TEXT NOT NULL,
+  context TEXT NOT NULL,
+  note_path TEXT NOT NULL,
+  correct INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_wl_feedback_entity ON wikilink_feedback(entity);
+
+-- Wikilink suppressions (v4: auto-suppress false positives)
+CREATE TABLE IF NOT EXISTS wikilink_suppressions (
+  entity TEXT PRIMARY KEY,
+  false_positive_rate REAL NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Wikilink applications tracking (v5: implicit feedback)
+CREATE TABLE IF NOT EXISTS wikilink_applications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity TEXT NOT NULL,
+  note_path TEXT NOT NULL,
+  applied_at TEXT DEFAULT (datetime('now')),
+  status TEXT DEFAULT 'applied'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity, note_path);
+
+-- Index events tracking (v6: index activity history)
+CREATE TABLE IF NOT EXISTS index_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  trigger TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  success INTEGER NOT NULL DEFAULT 1,
+  note_count INTEGER,
+  files_changed INTEGER,
+  changed_paths TEXT,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_index_events_ts ON index_events(timestamp);
+
+-- Tool invocation tracking (v7: usage analytics)
+CREATE TABLE IF NOT EXISTS tool_invocations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  tool_name TEXT NOT NULL,
+  session_id TEXT,
+  note_paths TEXT,
+  duration_ms INTEGER,
+  success INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_tool_inv_ts ON tool_invocations(timestamp);
+CREATE INDEX IF NOT EXISTS idx_tool_inv_tool ON tool_invocations(tool_name, timestamp);
+CREATE INDEX IF NOT EXISTS idx_tool_inv_session ON tool_invocations(session_id, timestamp);
+
+-- Graph topology snapshots (v8: structural evolution)
+CREATE TABLE IF NOT EXISTS graph_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_graph_snap_ts ON graph_snapshots(timestamp);
+CREATE INDEX IF NOT EXISTS idx_graph_snap_m ON graph_snapshots(metric, timestamp);
+
+-- Note embeddings for semantic search (v9)
+CREATE TABLE IF NOT EXISTS note_embeddings (
+  path TEXT PRIMARY KEY,
+  embedding BLOB NOT NULL,
+  content_hash TEXT NOT NULL,
+  model TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Entity embeddings for semantic entity search (v10)
+CREATE TABLE IF NOT EXISTS entity_embeddings (
+  entity_name TEXT PRIMARY KEY,
+  embedding BLOB NOT NULL,
+  source_hash TEXT NOT NULL,
+  model TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Task cache for fast task queries (v12)
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  status TEXT NOT NULL,
+  raw TEXT NOT NULL,
+  context TEXT,
+  tags_json TEXT,
+  due_date TEXT,
+  UNIQUE(path, line)
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_path ON tasks(path);
+CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+
+-- Merge dismissals (v13: persistent merge pair suppression)
+CREATE TABLE IF NOT EXISTS merge_dismissals (
+  pair_key TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL,
+  target_path TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  target_name TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  dismissed_at TEXT DEFAULT (datetime('now'))
 );
 `;
 
@@ -294,10 +424,53 @@ function initSchema(db: Database.Database): void {
       const hasCrankState = db.prepare(
         `SELECT name FROM sqlite_master WHERE type='table' AND name='crank_state'`
       ).get();
-      if (hasCrankState) {
+      const hasWriteState = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='write_state'`
+      ).get();
+      if (hasCrankState && !hasWriteState) {
         db.exec('ALTER TABLE crank_state RENAME TO write_state');
+      } else if (hasCrankState && hasWriteState) {
+        // Both exist (stale db) — drop the old one
+        db.exec('DROP TABLE crank_state');
       }
     }
+
+    // v4: vault_metrics, wikilink_feedback, wikilink_suppressions tables
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v5: wikilink_applications table (implicit feedback tracking)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v6: index_events table (index activity history)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v7: tool_invocations table (usage analytics)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v8: graph_snapshots table (structural evolution)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v9: note_embeddings table (semantic search)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v10: entity_embeddings table (semantic entity search)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v11: notes_fts gains frontmatter column (4-col: path, title, frontmatter, content)
+    // Virtual tables can't ALTER, so drop and recreate
+    if (currentVersion < 11) {
+      db.exec('DROP TABLE IF EXISTS notes_fts');
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+        path, title, frontmatter, content,
+        tokenize='porter'
+      )`);
+      // Clear FTS metadata to force rebuild with new schema
+      db.exec(`DELETE FROM fts_metadata WHERE key = 'last_built'`);
+    }
+
+    // v12: tasks cache table (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v13: merge_dismissals table (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
 
     db.prepare(
       'INSERT OR IGNORE INTO schema_version (version) VALUES (?)'
@@ -443,6 +616,18 @@ export function openStateDb(vaultPath: string): StateDb {
 
     deleteFlywheelConfigStmt: db.prepare('DELETE FROM flywheel_config WHERE key = ?'),
 
+    // Task cache operations
+    insertTask: db.prepare(`
+      INSERT OR REPLACE INTO tasks (path, line, text, status, raw, context, tags_json, due_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `),
+
+    deleteTasksForPath: db.prepare('DELETE FROM tasks WHERE path = ?'),
+
+    clearAllTasks: db.prepare('DELETE FROM tasks'),
+
+    countTasksByStatus: db.prepare('SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status'),
+
     // Metadata operations
     getMetadataValue: db.prepare('SELECT value FROM metadata WHERE key = ?'),
 
@@ -478,7 +663,9 @@ export function openStateDb(vaultPath: string): StateDb {
       // Insert all entities by category
       const categories: EntityCategory[] = [
         'technologies', 'acronyms', 'people', 'projects',
-        'organizations', 'locations', 'concepts', 'other'
+        'organizations', 'locations', 'concepts', 'animals',
+        'media', 'events', 'documents', 'vehicles', 'health',
+        'finance', 'food', 'hobbies', 'other',
       ];
 
       let total = 0;
@@ -652,6 +839,15 @@ export function getEntityIndexFromDb(stateDb: StateDb): EntityIndex {
     organizations: [],
     locations: [],
     concepts: [],
+    animals: [],
+    media: [],
+    events: [],
+    documents: [],
+    vehicles: [],
+    health: [],
+    finance: [],
+    food: [],
+    hobbies: [],
     other: [],
     _metadata: {
       total_entities: entities.length,
@@ -875,6 +1071,36 @@ export function loadFlywheelConfigFromDb(stateDb: StateDb): Record<string, unkno
     return null;
   }
   return config;
+}
+
+// =============================================================================
+// Merge Dismissal Operations
+// =============================================================================
+
+/**
+ * Record a merge dismissal so the pair never reappears in suggestions.
+ */
+export function recordMergeDismissal(
+  db: StateDb,
+  sourcePath: string,
+  targetPath: string,
+  sourceName: string,
+  targetName: string,
+  reason: string
+): void {
+  const pairKey = [sourcePath, targetPath].sort().join('::');
+  db.db.prepare(`INSERT OR IGNORE INTO merge_dismissals
+    (pair_key, source_path, target_path, source_name, target_name, reason)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(pairKey, sourcePath, targetPath, sourceName, targetName, reason);
+}
+
+/**
+ * Get all dismissed merge pair keys for filtering.
+ */
+export function getDismissedMergePairs(db: StateDb): Set<string> {
+  const rows = db.db.prepare('SELECT pair_key FROM merge_dismissals').all() as { pair_key: string }[];
+  return new Set(rows.map(r => r.pair_key));
 }
 
 // =============================================================================

@@ -16,7 +16,7 @@ import * as path from 'path';
 // Constants
 // =============================================================================
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 4;
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
 /** Directory for flywheel state */
@@ -168,73 +168,6 @@ CREATE TABLE IF NOT EXISTS wikilink_suppressions (
   false_positive_rate REAL NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
 );
-
--- Wikilink applications tracking (v5: implicit feedback)
-CREATE TABLE IF NOT EXISTS wikilink_applications (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  entity TEXT NOT NULL,
-  note_path TEXT NOT NULL,
-  applied_at TEXT DEFAULT (datetime('now')),
-  status TEXT DEFAULT 'applied'
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity, note_path);
-
--- Index events tracking (v6: index activity history)
-CREATE TABLE IF NOT EXISTS index_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp INTEGER NOT NULL,
-  trigger TEXT NOT NULL,
-  duration_ms INTEGER NOT NULL,
-  success INTEGER NOT NULL DEFAULT 1,
-  note_count INTEGER,
-  files_changed INTEGER,
-  changed_paths TEXT,
-  error TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_index_events_ts ON index_events(timestamp);
-
--- Tool invocation tracking (v7: usage analytics)
-CREATE TABLE IF NOT EXISTS tool_invocations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp INTEGER NOT NULL,
-  tool_name TEXT NOT NULL,
-  session_id TEXT,
-  note_paths TEXT,
-  duration_ms INTEGER,
-  success INTEGER NOT NULL DEFAULT 1
-);
-CREATE INDEX IF NOT EXISTS idx_tool_inv_ts ON tool_invocations(timestamp);
-CREATE INDEX IF NOT EXISTS idx_tool_inv_tool ON tool_invocations(tool_name, timestamp);
-CREATE INDEX IF NOT EXISTS idx_tool_inv_session ON tool_invocations(session_id, timestamp);
-
--- Graph topology snapshots (v8: structural evolution)
-CREATE TABLE IF NOT EXISTS graph_snapshots (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  timestamp INTEGER NOT NULL,
-  metric TEXT NOT NULL,
-  value REAL NOT NULL,
-  details TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_graph_snap_ts ON graph_snapshots(timestamp);
-CREATE INDEX IF NOT EXISTS idx_graph_snap_m ON graph_snapshots(metric, timestamp);
-
--- Note embeddings for semantic search (v9)
-CREATE TABLE IF NOT EXISTS note_embeddings (
-  path TEXT PRIMARY KEY,
-  embedding BLOB NOT NULL,
-  content_hash TEXT NOT NULL,
-  model TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
--- Entity embeddings for semantic entity search (v10)
-CREATE TABLE IF NOT EXISTS entity_embeddings (
-  entity_name TEXT PRIMARY KEY,
-  embedding BLOB NOT NULL,
-  source_hash TEXT NOT NULL,
-  model TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
-);
 `;
 // =============================================================================
 // Database Initialization
@@ -282,28 +215,11 @@ function initSchema(db) {
         // v3: Rename crank_state → write_state
         if (currentVersion < 3) {
             const hasCrankState = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='crank_state'`).get();
-            const hasWriteState = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='write_state'`).get();
-            if (hasCrankState && !hasWriteState) {
+            if (hasCrankState) {
                 db.exec('ALTER TABLE crank_state RENAME TO write_state');
-            }
-            else if (hasCrankState && hasWriteState) {
-                // Both exist (stale db) — drop the old one
-                db.exec('DROP TABLE crank_state');
             }
         }
         // v4: vault_metrics, wikilink_feedback, wikilink_suppressions tables
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v5: wikilink_applications table (implicit feedback tracking)
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v6: index_events table (index activity history)
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v7: tool_invocations table (usage analytics)
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v8: graph_snapshots table (structural evolution)
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v9: note_embeddings table (semantic search)
-        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
-        // v10: entity_embeddings table (semantic entity search)
         // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
