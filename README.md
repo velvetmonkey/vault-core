@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/vault-core/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@velvetmonkey/vault-core.svg)](https://www.npmjs.com/package/@velvetmonkey/vault-core)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Scale](https://img.shields.io/badge/scale-100k%20notes-brightgreen.svg)](./packages/bench/README.md)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue.svg)](https://github.com/velvetmonkey/vault-core)
 
@@ -226,4 +226,4 @@ console.log(`Passed: ${summary.passed}/${summary.total}`);
 
 Part of the [Flywheel](https://github.com/velvetmonkey/flywheel) ecosystem. Primary consumer: [Flywheel Memory](https://github.com/velvetmonkey/flywheel-memory).
 
-Apache-2.0 License -- [GitHub](https://github.com/velvetmonkey/vault-core) -- [Issues](https://github.com/velvetmonkey/vault-core/issues)
+AGPL-3.0 License -- [GitHub](https://github.com/velvetmonkey/vault-core) -- [Issues](https://github.com/velvetmonkey/vault-core/issues)
