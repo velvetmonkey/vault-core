@@ -418,7 +418,9 @@ describe('detectImplicitEntities', () => {
   describe('proper nouns pattern', () => {
     it('should detect multi-word proper nouns', () => {
       const content = 'I discussed the project with Marcus Johnson yesterday.';
-      const matches = detectImplicitEntities(content);
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns'],
+      });
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('Marcus Johnson');
@@ -427,7 +429,9 @@ describe('detectImplicitEntities', () => {
 
     it('should detect multiple proper nouns', () => {
       const content = 'Project Alpha is led by Sarah Connor and John Smith.';
-      const matches = detectImplicitEntities(content);
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns'],
+      });
 
       expect(matches).toHaveLength(3);
       expect(matches.map(m => m.text)).toContain('Project Alpha');
@@ -437,7 +441,9 @@ describe('detectImplicitEntities', () => {
 
     it('should detect three-word proper nouns', () => {
       const content = 'Visit San Francisco Bay to see the bridge.';
-      const matches = detectImplicitEntities(content);
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns'],
+      });
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('San Francisco Bay');
@@ -464,7 +470,9 @@ describe('detectImplicitEntities', () => {
   describe('quoted terms pattern', () => {
     it('should detect quoted terms', () => {
       const content = 'We need to test the "Turbopump" component next week.';
-      const matches = detectImplicitEntities(content);
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['quoted-terms'],
+      });
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('Turbopump');
@@ -473,7 +481,9 @@ describe('detectImplicitEntities', () => {
 
     it('should detect multiple quoted terms', () => {
       const content = 'The "Propulsion System" uses a "Turbopump" for fuel.';
-      const matches = detectImplicitEntities(content);
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['quoted-terms'],
+      });
 
       expect(matches).toHaveLength(2);
       expect(matches.map(m => m.text)).toContain('Propulsion System');
@@ -518,17 +528,17 @@ describe('detectImplicitEntities', () => {
       expect(matches).toHaveLength(0);
     });
 
-    it('should not be enabled by default', () => {
+    it('should be enabled by default', () => {
       const content = 'I talked to Marcus yesterday.';
       const matchesDefault = detectImplicitEntities(content);
-      const matchesWithSingleCaps = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
+      const matchesWithoutSingleCaps = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns', 'quoted-terms']
       });
 
-      // Default should not have Marcus (single word)
-      expect(matchesDefault.map(m => m.text)).not.toContain('Marcus');
-      // With single-caps should have it
-      expect(matchesWithSingleCaps.map(m => m.text)).toContain('Marcus');
+      // Default now includes single-caps, so Marcus should be detected
+      expect(matchesDefault.map(m => m.text)).toContain('Marcus');
+      // Without single-caps should not have it
+      expect(matchesWithoutSingleCaps.map(m => m.text)).not.toContain('Marcus');
     });
   });
 
@@ -650,7 +660,10 @@ describe('processWikilinks', () => {
     const content = 'React is used by Marcus Johnson for Project Alpha.';
     const entities = ['React'];
 
-    const result = processWikilinks(content, entities, { detectImplicit: true });
+    const result = processWikilinks(content, entities, {
+      detectImplicit: true,
+      implicitPatterns: ['proper-nouns'],
+    });
 
     // 1 known (React) + 2 implicit (Marcus Johnson, Project Alpha)
     expect(result.linksAdded).toBe(3);
