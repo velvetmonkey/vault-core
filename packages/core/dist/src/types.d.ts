@@ -4,7 +4,7 @@
 /**
  * Categories for entity classification
  */
-export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'other';
+export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'animals' | 'media' | 'events' | 'documents' | 'vehicles' | 'health' | 'finance' | 'food' | 'hobbies' | 'other';
 /**
  * Entity with optional aliases from frontmatter
  */
@@ -42,6 +42,15 @@ export interface EntityIndex {
     organizations: Entity[];
     locations: Entity[];
     concepts: Entity[];
+    animals: Entity[];
+    media: Entity[];
+    events: Entity[];
+    documents: Entity[];
+    vehicles: Entity[];
+    health: Entity[];
+    finance: Entity[];
+    food: Entity[];
+    hobbies: Entity[];
     other: Entity[];
     _metadata: {
         total_entities: number;
@@ -115,7 +124,7 @@ export interface ImplicitEntityConfig {
      * Which patterns to use for detection
      * @default ['proper-nouns', 'quoted-terms']
      */
-    implicitPatterns?: Array<'proper-nouns' | 'quoted-terms' | 'single-caps'>;
+    implicitPatterns?: Array<'proper-nouns' | 'quoted-terms' | 'single-caps' | 'camel-case' | 'acronyms'>;
     /**
      * Regex patterns to exclude from implicit detection
      * @default ['^The ', '^A ', '^An ', '^This ', '^That ', '^These ', '^Those ']
@@ -147,7 +156,7 @@ export interface ImplicitEntityMatch {
     /** End position in content */
     end: number;
     /** Detection method used */
-    pattern: 'proper-nouns' | 'quoted-terms' | 'single-caps';
+    pattern: 'proper-nouns' | 'quoted-terms' | 'single-caps' | 'camel-case' | 'acronyms';
 }
 /**
  * Options for resolving alias-based wikilinks

@@ -25,11 +25,11 @@ const MAX_ENTITY_WORDS = 3;
  * Default patterns for filtering out periodic notes and system files
  */
 const DEFAULT_EXCLUDE_PATTERNS = [
-    /^\d{4}-\d{2}-\d{2}$/, // ISO dates: 2025-01-01
+    /^\d{4}-\d{2}-\d{2}/, // ISO dates: 2025-01-01, 2025-01-01 Meeting Notes
     /^\d{1,2}\/\d{1,2}\/\d{4}$/, // UK dates: 1/10/2024
-    /^\d{4}-W\d{2}$/, // Week dates: 2025-W17
-    /^\d{4}-\d{2}$/, // Month format: 2025-01
-    /^\d{4}-Q\d$/, // Quarter dates: 2025-Q4
+    /^\d{4}-W\d{2}/, // Week dates: 2025-W17, 2025-W17 Sprint Review
+    /^\d{4}-\d{2}/, // Month format: 2025-01, 2025-01 Monthly Review
+    /^\d{4}-Q\d/, // Quarter dates: 2025-Q4, 2025-Q4 Quarterly Report
     /^\d+$/, // Pure numbers
     /^@/, // Twitter handles
     /^</, // XML/HTML tags
@@ -79,31 +79,37 @@ function isValidAlias(alias) {
     return true;
 }
 /**
- * Parse frontmatter from markdown content and extract aliases
+ * Parse frontmatter from markdown content and extract aliases and type
  * Handles YAML array format: aliases: [Alias1, Alias2]
  * And YAML list format:
  *   aliases:
  *     - Alias1
  *     - Alias2
  */
-function extractAliasesFromContent(content) {
+function extractFrontmatterFields(content) {
     // Check for frontmatter delimiter
     if (!content.startsWith('---')) {
-        return [];
+        return { aliases: [] };
     }
     // Find end of frontmatter
     const endIndex = content.indexOf('\n---', 3);
     if (endIndex === -1) {
-        return [];
+        return { aliases: [] };
     }
     const frontmatter = content.substring(4, endIndex);
+    // Extract type field
+    const typeMatch = frontmatter.match(/^type:\s*["']?([^"'\n]+?)["']?\s*$/m);
+    const type = typeMatch ? typeMatch[1].trim() : undefined;
     // Try inline array format: aliases: [Alias1, Alias2]
     const inlineMatch = frontmatter.match(/^aliases:\s*\[([^\]]*)\]/m);
     if (inlineMatch) {
-        return inlineMatch[1]
-            .split(',')
-            .map(s => s.trim().replace(/^["']|["']$/g, '')) // Remove quotes
-            .filter(s => s.length > 0 && isValidAlias(s));
+        return {
+            aliases: inlineMatch[1]
+                .split(',')
+                .map(s => s.trim().replace(/^["']|["']$/g, '')) // Remove quotes
+                .filter(s => s.length > 0 && isValidAlias(s)),
+            type,
+        };
     }
     // Try multiline list format
     const lines = frontmatter.split('\n');
@@ -113,9 +119,9 @@ function extractAliasesFromContent(content) {
         const singleMatch = frontmatter.match(/^aliases:\s+(.+)$/m);
         if (singleMatch && !singleMatch[1].startsWith('[')) {
             const alias = singleMatch[1].trim().replace(/^["']|["']$/g, '');
-            return isValidAlias(alias) ? [alias] : [];
+            return { aliases: isValidAlias(alias) ? [alias] : [], type };
         }
-        return [];
+        return { aliases: [], type };
     }
     // Parse list items following "aliases:"
     const aliases = [];
@@ -138,7 +144,7 @@ function extractAliasesFromContent(content) {
             }
         }
     }
-    return aliases;
+    return { aliases, type };
 }
 /**
  * Check if a file/folder name should be skipped (dot-prefixed)
@@ -165,9 +171,61 @@ const LOCATION_KEYWORDS = ['city', 'county', 'region', 'district', 'province'];
  */
 const REGION_PATTERNS = ['eu', 'apac', 'emea', 'latam', 'amer'];
 /**
- * Categorize an entity based on its name
+ * Map frontmatter `type` values to EntityCategory
+ * Returns undefined if the type doesn't map to a known category
+ */
+const FRONTMATTER_TYPE_MAP = {
+    // animals
+    animal: 'animals', pet: 'animals', horse: 'animals', dog: 'animals',
+    cat: 'animals', bird: 'animals', fish: 'animals',
+    // people
+    person: 'people', contact: 'people', friend: 'people',
+    colleague: 'people', family: 'people',
+    // media
+    movie: 'media', book: 'media', show: 'media', game: 'media',
+    music: 'media', album: 'media', film: 'media', podcast: 'media', series: 'media',
+    // events
+    event: 'events', meeting: 'events', conference: 'events',
+    trip: 'events', holiday: 'events', milestone: 'events',
+    // documents
+    document: 'documents', report: 'documents', guide: 'documents',
+    reference: 'documents', template: 'documents', note: 'documents',
+    // vehicles
+    vehicle: 'vehicles', car: 'vehicles', bike: 'vehicles',
+    boat: 'vehicles', motorcycle: 'vehicles',
+    // health
+    health: 'health', medical: 'health', fitness: 'health',
+    condition: 'health', wellness: 'health', exercise: 'health',
+    // finance
+    finance: 'finance', account: 'finance', investment: 'finance',
+    budget: 'finance', transaction: 'finance', bank: 'finance',
+    // food
+    food: 'food', recipe: 'food', restaurant: 'food',
+    meal: 'food', ingredient: 'food', drink: 'food',
+    // hobbies
+    hobby: 'hobbies', sport: 'hobbies', craft: 'hobbies',
+    activity: 'hobbies', collection: 'hobbies',
+    // identity categories (for reverse-mapping)
+    acronym: 'acronyms',
+    media: 'media',
+    other: 'other',
+    // existing categories
+    project: 'projects',
+    tool: 'technologies', technology: 'technologies', framework: 'technologies',
+    library: 'technologies', language: 'technologies',
+    company: 'organizations', organization: 'organizations', org: 'organizations', team: 'organizations',
+    place: 'locations', location: 'locations', city: 'locations',
+    country: 'locations', region: 'locations',
+    concept: 'concepts', idea: 'concepts', topic: 'concepts',
+};
+function mapFrontmatterType(type) {
+    return FRONTMATTER_TYPE_MAP[type.toLowerCase()];
+}
+/**
+ * Categorize an entity based on its name and optional frontmatter type
  *
  * Detection order (most specific first):
+ * 0. Frontmatter type - explicit declaration takes priority
  * 1. Technologies - matches tech keyword
  * 2. Acronyms - all uppercase 2-6 chars
  * 3. Organizations - ends with company/team suffixes
@@ -177,7 +235,13 @@ const REGION_PATTERNS = ['eu', 'apac', 'emea', 'latam', 'amer'];
  * 7. Projects - multi-word (fallback)
  * 8. Other - single word default
  */
-function categorizeEntity(name, techKeywords) {
+function categorizeEntity(name, techKeywords, frontmatterType) {
+    // 0. Frontmatter type takes priority
+    if (frontmatterType) {
+        const mapped = mapFrontmatterType(frontmatterType);
+        if (mapped)
+            return mapped;
+    }
     const nameLower = name.toLowerCase();
     const words = name.split(/\s+/);
     // 1. Technology check (keyword match)
@@ -245,11 +309,14 @@ async function scanDirectory(dirPath, basePath, excludeFolders) {
                 // Extract file stem (without .md extension)
                 const stem = path.basename(entry.name, '.md');
                 const relativePath = path.relative(basePath, fullPath);
-                // Read file content to extract aliases
+                // Read file content to extract aliases and type
                 let aliases = [];
+                let frontmatterType;
                 try {
                     const content = await fs.readFile(fullPath, 'utf-8');
-                    aliases = extractAliasesFromContent(content);
+                    const fields = extractFrontmatterFields(content);
+                    aliases = fields.aliases;
+                    frontmatterType = fields.type;
                 }
                 catch {
                     // Skip if can't read file - just use empty aliases
@@ -258,6 +325,7 @@ async function scanDirectory(dirPath, basePath, excludeFolders) {
                     name: stem,
                     relativePath,
                     aliases,
+                    frontmatterType,
                 });
             }
         }
@@ -296,6 +364,15 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         organizations: [],
         locations: [],
         concepts: [],
+        animals: [],
+        media: [],
+        events: [],
+        documents: [],
+        vehicles: [],
+        health: [],
+        finance: [],
+        food: [],
+        hobbies: [],
         other: [],
         _metadata: {
             total_entities: 0,
@@ -306,7 +383,7 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         },
     };
     for (const entity of uniqueEntities) {
-        const category = categorizeEntity(entity.name, techKeywords);
+        const category = categorizeEntity(entity.name, techKeywords, entity.frontmatterType);
         // Store as EntityWithAliases object
         const entityObj = {
             name: entity.name,
@@ -321,41 +398,35 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         const nameB = typeof b === 'string' ? b : b.name;
         return nameA.localeCompare(nameB);
     };
-    index.technologies.sort(sortByName);
-    index.acronyms.sort(sortByName);
-    index.people.sort(sortByName);
-    index.projects.sort(sortByName);
-    index.organizations.sort(sortByName);
-    index.locations.sort(sortByName);
-    index.concepts.sort(sortByName);
-    index.other.sort(sortByName);
+    const allCategories = [
+        'technologies', 'acronyms', 'people', 'projects', 'organizations',
+        'locations', 'concepts', 'animals', 'media', 'events', 'documents',
+        'vehicles', 'health', 'finance', 'food', 'hobbies', 'other',
+    ];
+    for (const cat of allCategories) {
+        index[cat].sort(sortByName);
+    }
     // Update metadata
-    index._metadata.total_entities =
-        index.technologies.length +
-            index.acronyms.length +
-            index.people.length +
-            index.projects.length +
-            index.organizations.length +
-            index.locations.length +
-            index.concepts.length +
-            index.other.length;
+    index._metadata.total_entities = allCategories.reduce((sum, cat) => sum + index[cat].length, 0);
     return index;
 }
 /**
  * Get all entities as a flat array (for wikilink matching)
  * Handles both legacy string format and new EntityWithAliases format
  */
+/** All entity category keys (excludes _metadata) */
+const ALL_ENTITY_CATEGORIES = [
+    'technologies', 'acronyms', 'people', 'projects', 'organizations',
+    'locations', 'concepts', 'animals', 'media', 'events', 'documents',
+    'vehicles', 'health', 'finance', 'food', 'hobbies', 'other',
+];
 export function getAllEntities(index) {
-    return [
-        ...index.technologies,
-        ...index.acronyms,
-        ...index.people,
-        ...index.projects,
-        ...index.organizations,
-        ...index.locations,
-        ...index.concepts,
-        ...index.other,
-    ];
+    const result = [];
+    for (const cat of ALL_ENTITY_CATEGORIES) {
+        if (index[cat])
+            result.push(...index[cat]);
+    }
+    return result;
 }
 /**
  * Get all entities with their category type preserved
@@ -369,16 +440,7 @@ export function getAllEntities(index) {
  */
 export function getAllEntitiesWithTypes(index) {
     const result = [];
-    const categories = [
-        'technologies',
-        'acronyms',
-        'people',
-        'projects',
-        'organizations',
-        'locations',
-        'concepts',
-        'other',
-    ];
+    const categories = ALL_ENTITY_CATEGORIES;
     for (const category of categories) {
         const entities = index[category];
         // Skip undefined or empty categories

@@ -63,6 +63,10 @@ export interface StateDb {
     getFlywheelConfigStmt: Statement;
     getAllFlywheelConfigStmt: Statement;
     deleteFlywheelConfigStmt: Statement;
+    insertTask: Statement;
+    deleteTasksForPath: Statement;
+    clearAllTasks: Statement;
+    countTasksByStatus: Statement;
     getMetadataValue: Statement;
     setMetadataValue: Statement;
     bulkInsertEntities: Transaction<(entities: EntityWithAliases[], category: EntityCategory) => number>;
@@ -70,7 +74,7 @@ export interface StateDb {
     close: () => void;
 }
 /** Current schema version - bump when schema changes */
-export declare const SCHEMA_VERSION = 4;
+export declare const SCHEMA_VERSION = 14;
 /** State database filename */
 export declare const STATE_DB_FILENAME = "state.db";
 /** Directory for flywheel state */
@@ -177,6 +181,14 @@ export declare function saveFlywheelConfigToDb(stateDb: StateDb, config: Record<
  * Load Flywheel config from database and reconstruct as typed object
  */
 export declare function loadFlywheelConfigFromDb(stateDb: StateDb): Record<string, unknown> | null;
+/**
+ * Record a merge dismissal so the pair never reappears in suggestions.
+ */
+export declare function recordMergeDismissal(db: StateDb, sourcePath: string, targetPath: string, sourceName: string, targetName: string, reason: string): void;
+/**
+ * Get all dismissed merge pair keys for filtering.
+ */
+export declare function getDismissedMergePairs(db: StateDb): Set<string>;
 /**
  * Get database metadata
  */

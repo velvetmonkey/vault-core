@@ -459,6 +459,13 @@ const IMPLICIT_EXCLUDE_WORDS = new Set([
     'answer', 'summary', 'overview', 'introduction', 'conclusion',
     // Technical terms that look like proper nouns
     'true', 'false', 'null', 'undefined', 'none', 'class', 'function', 'method',
+    // Common short words that appear as ALL-CAPS but aren't entities
+    'the', 'and', 'but', 'for', 'not', 'you', 'all', 'can', 'had', 'her',
+    'was', 'one', 'our', 'out', 'are', 'has', 'his', 'how', 'its', 'may',
+    'new', 'now', 'old', 'see', 'way', 'who', 'did', 'got', 'let', 'say',
+    // Common abbreviations that aren't entities
+    'etc', 'aka', 'btw', 'fyi', 'imo', 'tldr', 'asap', 'rsvp',
+    'url', 'html', 'css', 'http', 'https', 'json', 'xml', 'sql', 'ssh', 'tcp', 'udp', 'dns',
 ]);
 /**
  * Words that commonly start sentences but should not start a proper noun entity.
@@ -581,9 +588,51 @@ export function detectImplicitEntities(content, config = {}) {
             }
         }
     }
-    // Sort by position
-    detected.sort((a, b) => a.start - b.start);
-    return detected;
+    // Pattern 4: CamelCase words (TypeScript, YouTube, HuggingFace)
+    if (implicitPatterns.includes('camel-case')) {
+        const camelRegex = /\b([A-Z][a-z]+[A-Z][a-zA-Z]*)\b/g;
+        let match;
+        while ((match = camelRegex.exec(content)) !== null) {
+            const text = match[1];
+            const start = match.index;
+            const end = start + text.length;
+            if (!shouldExclude(text) && !isProtected(start, end)) {
+                detected.push({ text, start, end, pattern: 'camel-case' });
+                seenTexts.add(text.toLowerCase());
+            }
+        }
+    }
+    // Pattern 5: ALL-CAPS acronyms (OBS, ONNX, AGPL, LLM)
+    if (implicitPatterns.includes('acronyms')) {
+        const acronymRegex = /\b([A-Z]{3,})\b/g;
+        let match;
+        while ((match = acronymRegex.exec(content)) !== null) {
+            const text = match[1];
+            const start = match.index;
+            const end = start + text.length;
+            if (!shouldExclude(text) && !isProtected(start, end)) {
+                detected.push({ text, start, end, pattern: 'acronyms' });
+                seenTexts.add(text.toLowerCase());
+            }
+        }
+    }
+    // Sort by position (earliest first; longest first at same position)
+    detected.sort((a, b) => {
+        if (a.start !== b.start)
+            return a.start - b.start;
+        return (b.end - b.start) - (a.end - a.start);
+    });
+    // Filter overlapping matches — prefer longer matches (earlier in sorted order at same position)
+    const filtered = [];
+    for (const match of detected) {
+        const overlaps = filtered.some(existing => (match.start >= existing.start && match.start < existing.end) ||
+            (match.end > existing.start && match.end <= existing.end) ||
+            (match.start <= existing.start && match.end >= existing.end));
+        if (!overlaps) {
+            filtered.push(match);
+        }
+    }
+    return filtered;
 }
 /**
  * Process wikilinks with support for both existing entities and implicit detection
@@ -640,12 +689,25 @@ export function processWikilinks(content, entities, options = {}) {
     if (newImplicitMatches.length === 0) {
         return result;
     }
+    // Step 4b: Filter overlapping matches (defense-in-depth)
+    const nonOverlapping = [];
+    for (const match of newImplicitMatches) {
+        const overlaps = nonOverlapping.some(existing => (match.start >= existing.start && match.start < existing.end) ||
+            (match.end > existing.start && match.end <= existing.end) ||
+            (match.start <= existing.start && match.end >= existing.end));
+        if (!overlaps) {
+            nonOverlapping.push(match);
+        }
+    }
+    if (nonOverlapping.length === 0) {
+        return result;
+    }
     // Step 5: Apply implicit wikilinks (process from end to preserve positions)
     let processedContent = result.content;
     const implicitEntities = [];
     // Process from end to start
-    for (let i = newImplicitMatches.length - 1; i >= 0; i--) {
-        const match = newImplicitMatches[i];
+    for (let i = nonOverlapping.length - 1; i >= 0; i--) {
+        const match = nonOverlapping[i];
         // For quoted terms, we replace "Term" with [[Term]]
         // For other patterns, we replace Term with [[Term]]
         let wikilink;
@@ -673,7 +735,7 @@ export function processWikilinks(content, entities, options = {}) {
     }
     return {
         content: processedContent,
-        linksAdded: result.linksAdded + newImplicitMatches.length,
+        linksAdded: result.linksAdded + nonOverlapping.length,
         linkedEntities: result.linkedEntities,
         implicitEntities,
     };

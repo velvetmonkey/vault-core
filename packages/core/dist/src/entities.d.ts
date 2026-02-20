@@ -14,10 +14,6 @@ export declare const ENTITY_CACHE_VERSION = 3;
  * Scan vault for entities (markdown file stems) that can be wikilinked
  */
 export declare function scanVaultEntities(vaultPath: string, options?: ScanOptions): Promise<EntityIndex>;
-/**
- * Get all entities as a flat array (for wikilink matching)
- * Handles both legacy string format and new EntityWithAliases format
- */
 export declare function getAllEntities(index: EntityIndex): Entity[];
 /**
  * Get all entities with their category type preserved
