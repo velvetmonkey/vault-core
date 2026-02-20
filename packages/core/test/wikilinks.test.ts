@@ -418,9 +418,7 @@ describe('detectImplicitEntities', () => {
   describe('proper nouns pattern', () => {
     it('should detect multi-word proper nouns', () => {
       const content = 'I discussed the project with Marcus Johnson yesterday.';
-      const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns'],
-      });
+      const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('Marcus Johnson');
@@ -429,9 +427,7 @@ describe('detectImplicitEntities', () => {
 
     it('should detect multiple proper nouns', () => {
       const content = 'Project Alpha is led by Sarah Connor and John Smith.';
-      const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns'],
-      });
+      const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(3);
       expect(matches.map(m => m.text)).toContain('Project Alpha');
@@ -441,9 +437,7 @@ describe('detectImplicitEntities', () => {
 
     it('should detect three-word proper nouns', () => {
       const content = 'Visit San Francisco Bay to see the bridge.';
-      const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns'],
-      });
+      const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('San Francisco Bay');
@@ -470,9 +464,7 @@ describe('detectImplicitEntities', () => {
   describe('quoted terms pattern', () => {
     it('should detect quoted terms', () => {
       const content = 'We need to test the "Turbopump" component next week.';
-      const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['quoted-terms'],
-      });
+      const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(1);
       expect(matches[0].text).toBe('Turbopump');
@@ -481,9 +473,7 @@ describe('detectImplicitEntities', () => {
 
     it('should detect multiple quoted terms', () => {
       const content = 'The "Propulsion System" uses a "Turbopump" for fuel.';
-      const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['quoted-terms'],
-      });
+      const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(2);
       expect(matches.map(m => m.text)).toContain('Propulsion System');
@@ -528,17 +518,17 @@ describe('detectImplicitEntities', () => {
       expect(matches).toHaveLength(0);
     });
 
-    it('should be enabled by default', () => {
+    it('should not be enabled by default', () => {
       const content = 'I talked to Marcus yesterday.';
       const matchesDefault = detectImplicitEntities(content);
-      const matchesWithoutSingleCaps = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns', 'quoted-terms']
+      const matchesWithSingleCaps = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
       });
 
-      // Default now includes single-caps, so Marcus should be detected
-      expect(matchesDefault.map(m => m.text)).toContain('Marcus');
-      // Without single-caps should not have it
-      expect(matchesWithoutSingleCaps.map(m => m.text)).not.toContain('Marcus');
+      // Default should not have Marcus (single word)
+      expect(matchesDefault.map(m => m.text)).not.toContain('Marcus');
+      // With single-caps should have it
+      expect(matchesWithSingleCaps.map(m => m.text)).toContain('Marcus');
     });
   });
 
@@ -589,6 +579,45 @@ describe('detectImplicitEntities', () => {
       expect(matches.map(m => m.text)).toContain('John Smith');
       expect(matches.map(m => m.text)).not.toContain('Monday');
       expect(matches.map(m => m.text)).not.toContain('January');
+    });
+  });
+
+  describe('overlap filtering', () => {
+    it('should keep longer match when proper-nouns and single-caps overlap', () => {
+      const content = 'Morning Briefing was productive today.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns', 'single-caps']
+      });
+
+      expect(matches.map(m => m.text)).toContain('Morning Briefing');
+      expect(matches.map(m => m.text)).not.toContain('Briefing');
+    });
+
+    it('should not produce corrupted wikilinks like ]]ng]]', () => {
+      const content = 'Morning Briefing (34.9s) was great.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns', 'single-caps']
+      });
+
+      // Apply matches in reverse order (simulating what processWikilinks does)
+      let result = content;
+      const sorted = [...matches].sort((a, b) => b.start - a.start);
+      for (const m of sorted) {
+        result = result.slice(0, m.start) + `[[${m.text}]]` + result.slice(m.end);
+      }
+
+      expect(result).toContain('[[Morning Briefing]]');
+      expect(result).not.toMatch(/\]\]\w+\]\]/);
+    });
+
+    it('should keep non-overlapping matches from different patterns', () => {
+      const content = 'Sam Altman discussed the Specialist Verticals topic.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['proper-nouns', 'single-caps']
+      });
+
+      expect(matches.map(m => m.text)).toContain('Sam Altman');
+      expect(matches.map(m => m.text)).toContain('Specialist Verticals');
     });
   });
 });
@@ -660,10 +689,7 @@ describe('processWikilinks', () => {
     const content = 'React is used by Marcus Johnson for Project Alpha.';
     const entities = ['React'];
 
-    const result = processWikilinks(content, entities, {
-      detectImplicit: true,
-      implicitPatterns: ['proper-nouns'],
-    });
+    const result = processWikilinks(content, entities, { detectImplicit: true });
 
     // 1 known (React) + 2 implicit (Marcus Johnson, Project Alpha)
     expect(result.linksAdded).toBe(3);
