@@ -108,7 +108,7 @@ export interface StateDb {
 // =============================================================================
 
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 20;
 
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
@@ -379,6 +379,53 @@ CREATE TABLE IF NOT EXISTS suggestion_events (
 );
 CREATE INDEX IF NOT EXISTS idx_suggestion_entity ON suggestion_events(entity);
 CREATE INDEX IF NOT EXISTS idx_suggestion_note ON suggestion_events(note_path);
+
+-- Forward-link persistence for diff-based feedback (v16)
+CREATE TABLE IF NOT EXISTS note_links (
+  note_path TEXT NOT NULL,
+  target TEXT NOT NULL,
+  PRIMARY KEY (note_path, target)
+);
+
+-- Entity field change audit log (v17)
+CREATE TABLE IF NOT EXISTS entity_changes (
+  entity TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (entity, field, changed_at)
+);
+
+-- Note tag persistence for diff-based feedback (v18)
+CREATE TABLE IF NOT EXISTS note_tags (
+  note_path TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (note_path, tag)
+);
+
+-- Wikilink survival tracking for positive feedback signals (v19)
+CREATE TABLE IF NOT EXISTS note_link_history (
+  note_path TEXT NOT NULL,
+  target TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  edits_survived INTEGER NOT NULL DEFAULT 0,
+  last_positive_at TEXT,
+  PRIMARY KEY (note_path, target)
+);
+
+-- Note move history (v20): records when files are moved/renamed to a different folder
+CREATE TABLE IF NOT EXISTS note_moves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  old_path TEXT NOT NULL,
+  new_path TEXT NOT NULL,
+  moved_at TEXT NOT NULL DEFAULT (datetime('now')),
+  old_folder TEXT,
+  new_folder TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_note_moves_old_path ON note_moves(old_path);
+CREATE INDEX IF NOT EXISTS idx_note_moves_new_path ON note_moves(new_path);
+CREATE INDEX IF NOT EXISTS idx_note_moves_moved_at ON note_moves(moved_at);
 `;
 
 // =============================================================================
@@ -502,6 +549,21 @@ function initSchema(db: Database.Database): void {
     }
 
     // v15: suggestion_events table (pipeline observability audit log)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v16: note_links table (forward-link persistence for diff-based feedback)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v17: entity_changes table (entity field change audit log)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v18: note_tags table (tag persistence for diff-based feedback)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v19: note_link_history table (wikilink survival tracking for positive feedback)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v20: note_moves table (records file renames/moves detected by the watcher)
     // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
 
     db.prepare(
