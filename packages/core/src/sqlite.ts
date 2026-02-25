@@ -109,7 +109,7 @@ export interface StateDb {
 // =============================================================================
 
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 23;
 
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS wikilink_applications (
   applied_at TEXT DEFAULT (datetime('now')),
   status TEXT DEFAULT 'applied'
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity, note_path);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path);
 
 -- Index events tracking (v6: index activity history)
 CREATE TABLE IF NOT EXISTS index_events (
@@ -382,10 +382,12 @@ CREATE TABLE IF NOT EXISTS suggestion_events (
 CREATE INDEX IF NOT EXISTS idx_suggestion_entity ON suggestion_events(entity);
 CREATE INDEX IF NOT EXISTS idx_suggestion_note ON suggestion_events(note_path);
 
--- Forward-link persistence for diff-based feedback (v16)
+-- Forward-link persistence for diff-based feedback (v16), edge weights (v22)
 CREATE TABLE IF NOT EXISTS note_links (
   note_path TEXT NOT NULL,
   target TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  weight_updated_at INTEGER,
   PRIMARY KEY (note_path, target)
 );
 
@@ -576,6 +578,23 @@ function initSchema(db: Database.Database): void {
       if (hasDesc.cnt === 0) {
         db.exec('ALTER TABLE entities ADD COLUMN description TEXT');
       }
+    }
+
+    // v22: Edge weight columns on note_links table
+    if (currentVersion < 22) {
+      const hasWeight = db.prepare(
+        `SELECT COUNT(*) as cnt FROM pragma_table_info('note_links') WHERE name = 'weight'`
+      ).get() as { cnt: number };
+      if (hasWeight.cnt === 0) {
+        db.exec('ALTER TABLE note_links ADD COLUMN weight REAL NOT NULL DEFAULT 1.0');
+        db.exec('ALTER TABLE note_links ADD COLUMN weight_updated_at INTEGER');
+      }
+    }
+
+    // v23: Case-insensitive unique index on wikilink_applications
+    if (currentVersion < 23) {
+      db.exec('DROP INDEX IF EXISTS idx_wl_apps_unique');
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path)');
     }
 
     db.prepare(

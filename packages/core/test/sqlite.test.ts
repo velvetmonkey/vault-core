@@ -75,7 +75,24 @@ describe('SQLite State Management', () => {
     it('should have correct schema version', () => {
       stateDb = openStateDb(testVaultPath);
       const metadata = getStateDbMetadata(stateDb);
-      expect(metadata.schemaVersion).toBe(15);
+      expect(metadata.schemaVersion).toBe(23);
+    });
+
+    it('note_links has weight column with default 1.0', () => {
+      stateDb = openStateDb(testVaultPath);
+      const cols = stateDb.db.prepare(
+        "SELECT name, dflt_value FROM pragma_table_info('note_links') WHERE name = 'weight'"
+      ).get() as { name: string; dflt_value: string };
+      expect(cols).toBeDefined();
+      expect(cols.dflt_value).toBe('1.0');
+    });
+
+    it('note_links has weight_updated_at column', () => {
+      stateDb = openStateDb(testVaultPath);
+      const col = stateDb.db.prepare(
+        "SELECT name FROM pragma_table_info('note_links') WHERE name = 'weight_updated_at'"
+      ).get();
+      expect(col).toBeDefined();
     });
   });
 
@@ -98,7 +115,8 @@ describe('SQLite State Management', () => {
         entity.path,
         'technologies',
         JSON.stringify(entity.aliases),
-        entity.hubScore
+        entity.hubScore,
+        null
       );
 
       const result = getEntityByName(stateDb, 'TypeScript');
@@ -110,9 +128,9 @@ describe('SQLite State Management', () => {
 
     it('should search entities with FTS5', () => {
       // Insert test entities
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10);
-      stateDb.insertEntity.run('JavaScript', 'javascript', 'tech/javascript.md', 'technologies', '["JS"]', 8);
-      stateDb.insertEntity.run('Python', 'python', 'tech/python.md', 'technologies', '[]', 5);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10, null);
+      stateDb.insertEntity.run('JavaScript', 'javascript', 'tech/javascript.md', 'technologies', '["JS"]', 8, null);
+      stateDb.insertEntity.run('Python', 'python', 'tech/python.md', 'technologies', '[]', 5, null);
 
       // Search for "technologies" - should match all three
       const results = searchEntities(stateDb, 'technologies');
@@ -125,9 +143,9 @@ describe('SQLite State Management', () => {
     });
 
     it('should search entities by prefix', () => {
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '[]', 10);
-      stateDb.insertEntity.run('Types', 'types', 'tech/types.md', 'concepts', '[]', 5);
-      stateDb.insertEntity.run('Python', 'python', 'tech/python.md', 'technologies', '[]', 5);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '[]', 10, null);
+      stateDb.insertEntity.run('Types', 'types', 'tech/types.md', 'concepts', '[]', 5, null);
+      stateDb.insertEntity.run('Python', 'python', 'tech/python.md', 'technologies', '[]', 5, null);
 
       const results = searchEntitiesPrefix(stateDb, 'type');
       expect(results.length).toBe(2);
@@ -219,8 +237,8 @@ describe('SQLite State Management', () => {
     });
 
     it('should find entities by alias', () => {
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS", "typescript"]', 10);
-      stateDb.insertEntity.run('JavaScript', 'javascript', 'tech/javascript.md', 'technologies', '["JS"]', 8);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS", "typescript"]', 10, null);
+      stateDb.insertEntity.run('JavaScript', 'javascript', 'tech/javascript.md', 'technologies', '["JS"]', 8, null);
 
       const results = getEntitiesByAlias(stateDb, 'TS');
       expect(results.length).toBe(1);
@@ -228,7 +246,7 @@ describe('SQLite State Management', () => {
     });
 
     it('should be case-insensitive', () => {
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10, null);
 
       const results = getEntitiesByAlias(stateDb, 'ts');
       expect(results.length).toBe(1);
@@ -236,22 +254,22 @@ describe('SQLite State Management', () => {
     });
 
     it('should find multiple entities with the same alias', () => {
-      stateDb.insertEntity.run('Production Environment', 'production environment', 'ops/prod.md', 'concepts', '["production"]', 5);
-      stateDb.insertEntity.run('Production Line', 'production line', 'manufacturing/line.md', 'concepts', '["production"]', 3);
+      stateDb.insertEntity.run('Production Environment', 'production environment', 'ops/prod.md', 'concepts', '["production"]', 5, null);
+      stateDb.insertEntity.run('Production Line', 'production line', 'manufacturing/line.md', 'concepts', '["production"]', 3, null);
 
       const results = getEntitiesByAlias(stateDb, 'production');
       expect(results.length).toBe(2);
     });
 
     it('should return empty array for non-existent alias', () => {
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', '["TS"]', 10, null);
 
       const results = getEntitiesByAlias(stateDb, 'nonexistent');
       expect(results.length).toBe(0);
     });
 
     it('should handle null aliases_json', () => {
-      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', null, 10);
+      stateDb.insertEntity.run('TypeScript', 'typescript', 'tech/typescript.md', 'technologies', null, 10, null);
 
       const results = getEntitiesByAlias(stateDb, 'typescript');
       expect(results.length).toBe(0);
