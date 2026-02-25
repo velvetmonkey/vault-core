@@ -30,10 +30,18 @@ function getSearchTerms(entity) {
  * Common words to exclude from wikilink suggestions
  */
 const EXCLUDE_WORDS = new Set([
+    // Day names
     'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+    // Month names
     'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
     'september', 'october', 'november', 'december',
+    // Temporal words
     'today', 'tomorrow', 'yesterday', 'week', 'month', 'year',
+    // Periodic review compounds
+    'month end', 'month start', 'year end', 'year start',
+    'quarter end', 'quarter start', 'quarterly review',
+    'weekly review', 'monthly review', 'annual review',
+    // Stop words
     'the', 'and', 'for', 'with', 'from', 'this', 'that',
     'christmas', 'holiday', 'break',
 ]);
@@ -52,6 +60,7 @@ function shouldExcludeEntity(entity) {
 /**
  * Find all matches of an entity in content with word boundaries
  */
+const BRACKET_CHARS = new Set(['(', ')', '[', ']', '{', '}']);
 function findEntityMatches(content, entity, caseInsensitive) {
     const pattern = `\\b${escapeRegex(entity)}\\b`;
     const flags = caseInsensitive ? 'gi' : 'g';
@@ -59,9 +68,15 @@ function findEntityMatches(content, entity, caseInsensitive) {
     const matches = [];
     let match;
     while ((match = regex.exec(content)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        const charBefore = start > 0 ? content[start - 1] : '';
+        const charAfter = end < content.length ? content[end] : '';
+        if (BRACKET_CHARS.has(charBefore) || BRACKET_CHARS.has(charAfter))
+            continue;
         matches.push({
-            start: match.index,
-            end: match.index + match[0].length,
+            start,
+            end,
             matched: match[0],
         });
     }
@@ -76,7 +91,7 @@ function findEntityMatches(content, entity, caseInsensitive) {
  * @returns Result with updated content and statistics
  */
 export function applyWikilinks(content, entities, options = {}) {
-    const { firstOccurrenceOnly = true, caseInsensitive = true, } = options;
+    const { firstOccurrenceOnly = true, caseInsensitive = true, alreadyLinked, } = options;
     if (!entities.length) {
         return {
             content,
@@ -151,9 +166,11 @@ export function applyWikilinks(content, entities, options = {}) {
             return a.term.length - b.term.length;
         });
         // Select non-overlapping matches, preferring longer ones at same position
-        // Each entity gets at most one match
+        // Each entity gets at most one match.
+        // Pre-seed with any entities already linked by a prior step (e.g. resolveAliasWikilinks)
+        // so firstOccurrenceOnly skips them in this pass.
         const selectedMatches = [];
-        const selectedEntityNames = new Set();
+        const selectedEntityNames = new Set(alreadyLinked ?? []);
         for (const candidate of allCandidates) {
             const entityKey = candidate.entityName.toLowerCase();
             // Skip if this entity already has a selected match

@@ -17,6 +17,8 @@ export interface EntityWithAliases {
     aliases: string[];
     /** Hub score: backlink count for prioritization (set by Flywheel after graph build) */
     hubScore?: number;
+    /** Short description: frontmatter description: field or first paragraph, max 200 chars */
+    description?: string;
 }
 /**
  * Entity can be either a simple string (legacy) or full object with aliases
@@ -100,6 +102,12 @@ export interface WikilinkOptions {
      * @default true
      */
     caseInsensitive?: boolean;
+    /**
+     * Entity names (lowercase) already linked by a prior step (e.g. resolveAliasWikilinks).
+     * When firstOccurrenceOnly is true, these entities are treated as already seen and
+     * will not be linked again by applyWikilinks.
+     */
+    alreadyLinked?: Set<string>;
 }
 /**
  * Result of applying wikilinks

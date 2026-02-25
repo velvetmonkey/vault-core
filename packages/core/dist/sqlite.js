@@ -16,7 +16,7 @@ import * as path from 'path';
 // Constants
 // =============================================================================
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 23;
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
 /** Directory for flywheel state */
@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS entities (
   path TEXT NOT NULL,
   category TEXT NOT NULL,
   aliases_json TEXT,
-  hub_score INTEGER DEFAULT 0
+  hub_score INTEGER DEFAULT 0,
+  description TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_entities_name_lower ON entities(name_lower);
 CREATE INDEX IF NOT EXISTS idx_entities_category ON entities(category);
@@ -178,7 +179,7 @@ CREATE TABLE IF NOT EXISTS wikilink_applications (
   applied_at TEXT DEFAULT (datetime('now')),
   status TEXT DEFAULT 'applied'
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity, note_path);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path);
 
 -- Index events tracking (v6: index activity history)
 CREATE TABLE IF NOT EXISTS index_events (
@@ -265,6 +266,73 @@ CREATE TABLE IF NOT EXISTS merge_dismissals (
   reason TEXT NOT NULL,
   dismissed_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Suggestion events audit log (v15: pipeline observability)
+CREATE TABLE IF NOT EXISTS suggestion_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  note_path TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  total_score REAL NOT NULL,
+  breakdown_json TEXT NOT NULL,
+  threshold REAL NOT NULL,
+  passed INTEGER NOT NULL,
+  strictness TEXT NOT NULL,
+  applied INTEGER DEFAULT 0,
+  pipeline_event_id INTEGER,
+  UNIQUE(timestamp, note_path, entity)
+);
+CREATE INDEX IF NOT EXISTS idx_suggestion_entity ON suggestion_events(entity);
+CREATE INDEX IF NOT EXISTS idx_suggestion_note ON suggestion_events(note_path);
+
+-- Forward-link persistence for diff-based feedback (v16), edge weights (v22)
+CREATE TABLE IF NOT EXISTS note_links (
+  note_path TEXT NOT NULL,
+  target TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  weight_updated_at INTEGER,
+  PRIMARY KEY (note_path, target)
+);
+
+-- Entity field change audit log (v17)
+CREATE TABLE IF NOT EXISTS entity_changes (
+  entity TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (entity, field, changed_at)
+);
+
+-- Note tag persistence for diff-based feedback (v18)
+CREATE TABLE IF NOT EXISTS note_tags (
+  note_path TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (note_path, tag)
+);
+
+-- Wikilink survival tracking for positive feedback signals (v19)
+CREATE TABLE IF NOT EXISTS note_link_history (
+  note_path TEXT NOT NULL,
+  target TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  edits_survived INTEGER NOT NULL DEFAULT 0,
+  last_positive_at TEXT,
+  PRIMARY KEY (note_path, target)
+);
+
+-- Note move history (v20): records when files are moved/renamed to a different folder
+CREATE TABLE IF NOT EXISTS note_moves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  old_path TEXT NOT NULL,
+  new_path TEXT NOT NULL,
+  moved_at TEXT NOT NULL DEFAULT (datetime('now')),
+  old_folder TEXT,
+  new_folder TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_note_moves_old_path ON note_moves(old_path);
+CREATE INDEX IF NOT EXISTS idx_note_moves_new_path ON note_moves(new_path);
+CREATE INDEX IF NOT EXISTS idx_note_moves_moved_at ON note_moves(moved_at);
 `;
 // =============================================================================
 // Database Initialization
@@ -355,6 +423,38 @@ function initSchema(db) {
                 db.exec('ALTER TABLE index_events ADD COLUMN steps TEXT');
             }
         }
+        // v15: suggestion_events table (pipeline observability audit log)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v16: note_links table (forward-link persistence for diff-based feedback)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v17: entity_changes table (entity field change audit log)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v18: note_tags table (tag persistence for diff-based feedback)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v19: note_link_history table (wikilink survival tracking for positive feedback)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v20: note_moves table (records file renames/moves detected by the watcher)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v21: description TEXT column on entities table
+        if (currentVersion < 21) {
+            const hasDesc = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('entities') WHERE name = 'description'`).get();
+            if (hasDesc.cnt === 0) {
+                db.exec('ALTER TABLE entities ADD COLUMN description TEXT');
+            }
+        }
+        // v22: Edge weight columns on note_links table
+        if (currentVersion < 22) {
+            const hasWeight = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('note_links') WHERE name = 'weight'`).get();
+            if (hasWeight.cnt === 0) {
+                db.exec('ALTER TABLE note_links ADD COLUMN weight REAL NOT NULL DEFAULT 1.0');
+                db.exec('ALTER TABLE note_links ADD COLUMN weight_updated_at INTEGER');
+            }
+        }
+        // v23: Case-insensitive unique index on wikilink_applications
+        if (currentVersion < 23) {
+            db.exec('DROP INDEX IF EXISTS idx_wl_apps_unique');
+            db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path)');
+        }
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
 }
@@ -393,33 +493,33 @@ export function openStateDb(vaultPath) {
         dbPath,
         // Entity operations
         insertEntity: db.prepare(`
-      INSERT INTO entities (name, name_lower, path, category, aliases_json, hub_score)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO entities (name, name_lower, path, category, aliases_json, hub_score, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `),
         updateEntity: db.prepare(`
       UPDATE entities
-      SET name = ?, name_lower = ?, path = ?, category = ?, aliases_json = ?, hub_score = ?
+      SET name = ?, name_lower = ?, path = ?, category = ?, aliases_json = ?, hub_score = ?, description = ?
       WHERE id = ?
     `),
         deleteEntity: db.prepare('DELETE FROM entities WHERE id = ?'),
         getEntityByName: db.prepare(`
-      SELECT id, name, name_lower, path, category, aliases_json, hub_score
+      SELECT id, name, name_lower, path, category, aliases_json, hub_score, description
       FROM entities WHERE name_lower = ?
     `),
         getEntityById: db.prepare(`
-      SELECT id, name, name_lower, path, category, aliases_json, hub_score
+      SELECT id, name, name_lower, path, category, aliases_json, hub_score, description
       FROM entities WHERE id = ?
     `),
         getAllEntities: db.prepare(`
-      SELECT id, name, name_lower, path, category, aliases_json, hub_score
+      SELECT id, name, name_lower, path, category, aliases_json, hub_score, description
       FROM entities ORDER BY name
     `),
         getEntitiesByCategory: db.prepare(`
-      SELECT id, name, name_lower, path, category, aliases_json, hub_score
+      SELECT id, name, name_lower, path, category, aliases_json, hub_score, description
       FROM entities WHERE category = ? ORDER BY name
     `),
         searchEntitiesFts: db.prepare(`
-      SELECT e.id, e.name, e.name_lower, e.path, e.category, e.aliases_json, e.hub_score,
+      SELECT e.id, e.name, e.name_lower, e.path, e.category, e.aliases_json, e.hub_score, e.description,
              bm25(entities_fts) as rank
       FROM entities_fts
       JOIN entities e ON e.id = entities_fts.rowid
@@ -430,7 +530,7 @@ export function openStateDb(vaultPath) {
         clearEntities: db.prepare('DELETE FROM entities'),
         // Entity alias lookup
         getEntitiesByAlias: db.prepare(`
-      SELECT e.id, e.name, e.name_lower, e.path, e.category, e.aliases_json, e.hub_score
+      SELECT e.id, e.name, e.name_lower, e.path, e.category, e.aliases_json, e.hub_score, e.description
       FROM entities e
       WHERE EXISTS (SELECT 1 FROM json_each(e.aliases_json) WHERE LOWER(value) = ?)
     `),
@@ -493,7 +593,7 @@ export function openStateDb(vaultPath) {
         bulkInsertEntities: db.transaction((entities, category) => {
             let count = 0;
             for (const entity of entities) {
-                stateDb.insertEntity.run(entity.name, entity.name.toLowerCase(), entity.path, category, JSON.stringify(entity.aliases), entity.hubScore ?? 0);
+                stateDb.insertEntity.run(entity.name, entity.name.toLowerCase(), entity.path, category, JSON.stringify(entity.aliases), entity.hubScore ?? 0, entity.description ?? null);
                 count++;
             }
             return count;
@@ -518,7 +618,7 @@ export function openStateDb(vaultPath) {
                     const entityObj = typeof entity === 'string'
                         ? { name: entity, path: '', aliases: [], hubScore: 0 }
                         : entity;
-                    stateDb.insertEntity.run(entityObj.name, entityObj.name.toLowerCase(), entityObj.path, category, JSON.stringify(entityObj.aliases), entityObj.hubScore ?? 0);
+                    stateDb.insertEntity.run(entityObj.name, entityObj.name.toLowerCase(), entityObj.path, category, JSON.stringify(entityObj.aliases), entityObj.hubScore ?? 0, entityObj.description ?? null);
                     total++;
                 }
             }
@@ -559,6 +659,7 @@ export function searchEntities(stateDb, query, limit = 20) {
         category: row.category,
         aliases: row.aliases_json ? JSON.parse(row.aliases_json) : [],
         hubScore: row.hub_score,
+        description: row.description ?? undefined,
         rank: row.rank,
     }));
 }
@@ -587,6 +688,7 @@ export function getEntityByName(stateDb, name) {
         category: row.category,
         aliases: row.aliases_json ? JSON.parse(row.aliases_json) : [],
         hubScore: row.hub_score,
+        description: row.description ?? undefined,
         rank: 0,
     };
 }
@@ -603,6 +705,7 @@ export function getAllEntitiesFromDb(stateDb) {
         category: row.category,
         aliases: row.aliases_json ? JSON.parse(row.aliases_json) : [],
         hubScore: row.hub_score,
+        description: row.description ?? undefined,
         rank: 0,
     }));
 }
@@ -642,6 +745,7 @@ export function getEntityIndexFromDb(stateDb) {
             path: entity.path,
             aliases: entity.aliases,
             hubScore: entity.hubScore,
+            description: entity.description,
         };
         index[entity.category].push(entityObj);
     }
@@ -664,6 +768,7 @@ export function getEntitiesByAlias(stateDb, alias) {
         category: row.category,
         aliases: row.aliases_json ? JSON.parse(row.aliases_json) : [],
         hubScore: row.hub_score,
+        description: row.description ?? undefined,
         rank: 0,
     }));
 }
@@ -856,6 +961,14 @@ export function escapeFts5Query(query) {
         .replace(/[(){}[\]^~:-]/g, ' ') // Remove special operators including hyphen
         .replace(/\s+/g, ' ') // Normalize whitespace
         .trim();
+}
+/**
+ * Rebuild the entities_fts index from the entities table.
+ * Uses FTS5's built-in 'rebuild' command to resynchronize.
+ * Call this if the FTS index gets out of sync (e.g., T.aliases errors).
+ */
+export function rebuildEntitiesFts(stateDb) {
+    stateDb.db.exec(`INSERT INTO entities_fts(entities_fts) VALUES('rebuild')`);
 }
 /**
  * Check if the state database exists for a vault

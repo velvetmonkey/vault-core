@@ -19,5 +19,5 @@ setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, saveFlywheelConfigTo
 // Merge Dismissals
 recordMergeDismissal, getDismissedMergePairs, 
 // Vault Index Cache
-saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
+saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitiesFts, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
 //# sourceMappingURL=index.js.map

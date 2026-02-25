@@ -11,6 +11,12 @@ import type { EntityIndex, ScanOptions, Entity, EntityWithType } from './types.j
  */
 export declare const ENTITY_CACHE_VERSION = 3;
 /**
+ * Extract a short description for an entity note.
+ * Uses frontmatter `description:` if present, else the first non-empty paragraph (≥10 chars).
+ * Strips heading markers and wikilinks, truncates to 200 chars.
+ */
+export declare function extractEntityDescription(content: string): string | null;
+/**
  * Scan vault for entities (markdown file stems) that can be wikilinked
  */
 export declare function scanVaultEntities(vaultPath: string, options?: ScanOptions): Promise<EntityIndex>;

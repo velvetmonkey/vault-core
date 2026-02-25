@@ -22,6 +22,7 @@ export interface EntitySearchResult {
     aliases: string[];
     hubScore: number;
     rank: number;
+    description?: string;
 }
 /** Recency tracking for entities */
 export interface RecencyRow {
@@ -74,7 +75,7 @@ export interface StateDb {
     close: () => void;
 }
 /** Current schema version - bump when schema changes */
-export declare const SCHEMA_VERSION = 14;
+export declare const SCHEMA_VERSION = 23;
 /** State database filename */
 export declare const STATE_DB_FILENAME = "state.db";
 /** Directory for flywheel state */
@@ -201,6 +202,12 @@ export declare function isEntityDataStale(stateDb: StateDb, thresholdMs?: number
  * Escape special FTS5 characters in a query
  */
 export declare function escapeFts5Query(query: string): string;
+/**
+ * Rebuild the entities_fts index from the entities table.
+ * Uses FTS5's built-in 'rebuild' command to resynchronize.
+ * Call this if the FTS index gets out of sync (e.g., T.aliases errors).
+ */
+export declare function rebuildEntitiesFts(stateDb: StateDb): void;
 /**
  * Check if the state database exists for a vault
  */
