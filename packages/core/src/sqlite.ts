@@ -109,7 +109,7 @@ export interface StateDb {
 // =============================================================================
 
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 25;
 
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS wikilink_feedback (
   context TEXT NOT NULL,
   note_path TEXT NOT NULL,
   correct INTEGER NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1.0,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_wl_feedback_entity ON wikilink_feedback(entity);
@@ -430,6 +431,21 @@ CREATE TABLE IF NOT EXISTS note_moves (
 CREATE INDEX IF NOT EXISTS idx_note_moves_old_path ON note_moves(old_path);
 CREATE INDEX IF NOT EXISTS idx_note_moves_new_path ON note_moves(new_path);
 CREATE INDEX IF NOT EXISTS idx_note_moves_moved_at ON note_moves(moved_at);
+
+-- Corrections (v24): persistent correction records from user/engine feedback
+CREATE TABLE IF NOT EXISTS corrections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity TEXT,
+  note_path TEXT,
+  correction_type TEXT NOT NULL,
+  description TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'user',
+  status TEXT DEFAULT 'pending',
+  created_at TEXT DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_corrections_status ON corrections(status);
+CREATE INDEX IF NOT EXISTS idx_corrections_entity ON corrections(entity);
 `;
 
 // =============================================================================
@@ -595,6 +611,19 @@ function initSchema(db: Database.Database): void {
     if (currentVersion < 23) {
       db.exec('DROP INDEX IF EXISTS idx_wl_apps_unique');
       db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path)');
+    }
+
+    // v24: corrections table (persistent correction records)
+    // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+
+    // v25: confidence column on wikilink_feedback (signal quality weighting)
+    if (currentVersion < 25) {
+      const hasConfidence = db.prepare(
+        `SELECT COUNT(*) as cnt FROM pragma_table_info('wikilink_feedback') WHERE name = 'confidence'`
+      ).get() as { cnt: number };
+      if (hasConfidence.cnt === 0) {
+        db.exec('ALTER TABLE wikilink_feedback ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0');
+      }
     }
 
     db.prepare(
