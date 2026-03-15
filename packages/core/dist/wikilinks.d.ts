@@ -9,6 +9,11 @@
  * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
 import type { WikilinkOptions, WikilinkResult, Entity, ExtendedWikilinkOptions, ImplicitEntityMatch, ImplicitEntityConfig, ResolveAliasOptions } from './types.js';
+export declare function findEntityMatches(content: string, entity: string, caseInsensitive: boolean): Array<{
+    start: number;
+    end: number;
+    matched: string;
+}>;
 /**
  * Apply wikilinks to entities in content
  *
@@ -47,6 +52,10 @@ export declare function suggestWikilinks(content: string, entities: Entity[], op
  * @returns Result with updated content and statistics
  */
 export declare function resolveAliasWikilinks(content: string, entities: Entity[], options?: ResolveAliasOptions): WikilinkResult;
+/**
+ * Common words that should not be detected as implicit entities
+ */
+export declare const IMPLICIT_EXCLUDE_WORDS: Set<string>;
 /**
  * Detect implicit entities in content using pattern matching
  *

@@ -4,7 +4,7 @@
 /**
  * Categories for entity classification
  */
-export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'animals' | 'media' | 'events' | 'documents' | 'vehicles' | 'health' | 'finance' | 'food' | 'hobbies' | 'other';
+export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'animals' | 'media' | 'events' | 'documents' | 'vehicles' | 'health' | 'finance' | 'food' | 'hobbies' | 'periodical' | 'other';
 /**
  * Entity with optional aliases from frontmatter
  */
@@ -53,6 +53,7 @@ export interface EntityIndex {
     finance: Entity[];
     food: Entity[];
     hobbies: Entity[];
+    periodical: Entity[];
     other: Entity[];
     _metadata: {
         total_entities: number;

@@ -75,7 +75,7 @@ export interface StateDb {
     close: () => void;
 }
 /** Current schema version - bump when schema changes */
-export declare const SCHEMA_VERSION = 23;
+export declare const SCHEMA_VERSION = 28;
 /** State database filename */
 export declare const STATE_DB_FILENAME = "state.db";
 /** Directory for flywheel state */
@@ -238,6 +238,10 @@ export interface VaultIndexCacheData {
         context?: string;
     }>]>;
     entities: Array<[string, string]>;
+    prospects?: Array<[string, {
+        displayName: string;
+        backlinkCount: number;
+    }]>;
     tags: Array<[string, string[]]>;
     builtAt: number;
 }
@@ -277,4 +281,13 @@ export declare function clearVaultIndexCache(stateDb: StateDb): void;
  * @param maxAgeMs - Maximum cache age in milliseconds (default 24 hours)
  */
 export declare function isVaultIndexCacheValid(stateDb: StateDb, actualNoteCount: number, maxAgeMs?: number): boolean;
+/** Load all persisted content hashes */
+export declare function loadContentHashes(stateDb: StateDb): Map<string, string>;
+/** Persist hash changes from a watcher batch (upserts + deletes in one transaction) */
+export declare function saveContentHashBatch(stateDb: StateDb, upserts: Array<{
+    path: string;
+    hash: string;
+}>, deletes: string[]): void;
+/** Rename a hash entry (for file renames) */
+export declare function renameContentHash(stateDb: StateDb, oldPath: string, newPath: string): void;
 //# sourceMappingURL=sqlite.d.ts.map

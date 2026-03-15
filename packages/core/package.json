@@ -1,6 +1,6 @@
 {
   "name": "@velvetmonkey/vault-core",
-  "version": "2.0.32",
+  "version": "2.0.74",
   "description": "Shared vault utilities for Flywheel ecosystem (entity scanning, wikilinks, protected zones)",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/velvetmonkey/vault-core.git",
+    "url": "git+https://github.com/velvetmonkey/flywheel-memory.git",
     "directory": "packages/core"
   },
   "author": "Velvet Monkey <9402464+velvetmonkey@users.noreply.github.com>",
@@ -50,6 +50,8 @@
   "license": "Apache-2.0",
   "files": [
     "dist",
+    "!dist/**/*.js.map",
+    "!dist/**/*.d.ts.map",
     "README.md"
   ],
   "publishConfig": {

@@ -16,7 +16,7 @@ import * as path from 'path';
 // Constants
 // =============================================================================
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 28;
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
 /** Directory for flywheel state */
@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS wikilink_feedback (
   context TEXT NOT NULL,
   note_path TEXT NOT NULL,
   correct INTEGER NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1.0,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_wl_feedback_entity ON wikilink_feedback(entity);
@@ -333,6 +334,96 @@ CREATE TABLE IF NOT EXISTS note_moves (
 CREATE INDEX IF NOT EXISTS idx_note_moves_old_path ON note_moves(old_path);
 CREATE INDEX IF NOT EXISTS idx_note_moves_new_path ON note_moves(new_path);
 CREATE INDEX IF NOT EXISTS idx_note_moves_moved_at ON note_moves(moved_at);
+
+-- Corrections (v24): persistent correction records from user/engine feedback
+CREATE TABLE IF NOT EXISTS corrections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity TEXT,
+  note_path TEXT,
+  correction_type TEXT NOT NULL,
+  description TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'user',
+  status TEXT DEFAULT 'pending',
+  created_at TEXT DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_corrections_status ON corrections(status);
+CREATE INDEX IF NOT EXISTS idx_corrections_entity ON corrections(entity);
+
+-- Memories (v26): lightweight key-value working memory for agents
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  memory_type TEXT NOT NULL,
+  entity TEXT,
+  entities_json TEXT,
+  source_agent_id TEXT,
+  source_session_id TEXT,
+  confidence REAL NOT NULL DEFAULT 1.0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  accessed_at INTEGER NOT NULL,
+  ttl_days INTEGER,
+  superseded_by INTEGER REFERENCES memories(id),
+  visibility TEXT NOT NULL DEFAULT 'shared'
+);
+CREATE INDEX IF NOT EXISTS idx_memories_key ON memories(key);
+CREATE INDEX IF NOT EXISTS idx_memories_entity ON memories(entity);
+CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(memory_type);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+  key, value,
+  content=memories, content_rowid=id,
+  tokenize='porter unicode61'
+);
+
+-- Auto-sync triggers for memories_fts
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+  INSERT INTO memories_fts(rowid, key, value)
+  VALUES (new.id, new.key, new.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, key, value)
+  VALUES ('delete', old.id, old.key, old.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, key, value)
+  VALUES ('delete', old.id, old.key, old.value);
+  INSERT INTO memories_fts(rowid, key, value)
+  VALUES (new.id, new.key, new.value);
+END;
+
+-- Co-occurrence cache (v27): persist co-occurrence index to avoid full vault scan on restart
+CREATE TABLE IF NOT EXISTS cooccurrence_cache (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data TEXT NOT NULL,
+  built_at INTEGER NOT NULL,
+  entity_count INTEGER NOT NULL,
+  association_count INTEGER NOT NULL
+);
+
+-- Content hashes (v28): persist watcher content hashes across restarts
+CREATE TABLE IF NOT EXISTS content_hashes (
+  path TEXT PRIMARY KEY,
+  hash TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Session summaries (v26): agent session tracking
+CREATE TABLE IF NOT EXISTS session_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL UNIQUE,
+  summary TEXT NOT NULL,
+  topics_json TEXT,
+  notes_modified_json TEXT,
+  agent_id TEXT,
+  started_at INTEGER,
+  ended_at INTEGER NOT NULL,
+  tool_count INTEGER
+);
 `;
 // =============================================================================
 // Database Initialization
@@ -355,6 +446,10 @@ function initSchema(db) {
     db.pragma('journal_mode = WAL');
     // Enable foreign keys
     db.pragma('foreign_keys = ON');
+    // Performance tuning
+    db.pragma('synchronous = NORMAL'); // Safe with WAL — fsync only on checkpoint, not every commit
+    db.pragma('cache_size = -64000'); // 64 MB page cache (default is ~2 MB)
+    db.pragma('temp_store = MEMORY'); // Temp tables/indices in RAM instead of disk
     // Run schema creation
     db.exec(SCHEMA_SQL);
     // Guard: Verify critical tables were created
@@ -455,6 +550,21 @@ function initSchema(db) {
             db.exec('DROP INDEX IF EXISTS idx_wl_apps_unique');
             db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wl_apps_unique ON wikilink_applications(entity COLLATE NOCASE, note_path)');
         }
+        // v24: corrections table (persistent correction records)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v25: confidence column on wikilink_feedback (signal quality weighting)
+        if (currentVersion < 25) {
+            const hasConfidence = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('wikilink_feedback') WHERE name = 'confidence'`).get();
+            if (hasConfidence.cnt === 0) {
+                db.exec('ALTER TABLE wikilink_feedback ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0');
+            }
+        }
+        // v26: memories table, memories_fts, session_summaries table
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v27: cooccurrence_cache table (persist co-occurrence index)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v28: content_hashes table (persist watcher content hashes across restarts)
+        // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
 }
@@ -731,6 +841,7 @@ export function getEntityIndexFromDb(stateDb) {
         finance: [],
         food: [],
         hobbies: [],
+        periodical: [],
         other: [],
         _metadata: {
             total_entities: entities.length,
@@ -1068,5 +1179,36 @@ export function isVaultIndexCacheValid(stateDb, actualNoteCount, maxAgeMs = 24 *
     if (age > maxAgeMs)
         return false;
     return true;
+}
+// =============================================================================
+// Content Hash Operations
+// =============================================================================
+/** Load all persisted content hashes */
+export function loadContentHashes(stateDb) {
+    const rows = stateDb.db.prepare('SELECT path, hash FROM content_hashes').all();
+    const map = new Map();
+    for (const row of rows) {
+        map.set(row.path, row.hash);
+    }
+    return map;
+}
+/** Persist hash changes from a watcher batch (upserts + deletes in one transaction) */
+export function saveContentHashBatch(stateDb, upserts, deletes) {
+    const upsertStmt = stateDb.db.prepare('INSERT OR REPLACE INTO content_hashes (path, hash, updated_at) VALUES (?, ?, ?)');
+    const deleteStmt = stateDb.db.prepare('DELETE FROM content_hashes WHERE path = ?');
+    const now = Date.now();
+    const runBatch = stateDb.db.transaction(() => {
+        for (const { path, hash } of upserts) {
+            upsertStmt.run(path, hash, now);
+        }
+        for (const p of deletes) {
+            deleteStmt.run(p);
+        }
+    });
+    runBatch();
+}
+/** Rename a hash entry (for file renames) */
+export function renameContentHash(stateDb, oldPath, newPath) {
+    stateDb.db.prepare('UPDATE content_hashes SET path = ?, updated_at = ? WHERE path = ?').run(newPath, Date.now(), oldPath);
 }
 //# sourceMappingURL=sqlite.js.map

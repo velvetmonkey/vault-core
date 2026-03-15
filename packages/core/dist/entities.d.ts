@@ -10,6 +10,8 @@ import type { EntityIndex, ScanOptions, Entity, EntityWithType } from './types.j
  * Current cache version - bump when schema changes
  */
 export declare const ENTITY_CACHE_VERSION = 3;
+/** Entities that should never be indexed regardless of vault files */
+export declare const STOP_ENTITIES: Set<string>;
 /**
  * Extract a short description for an entity note.
  * Uses frontmatter `description:` if present, else the first non-empty paragraph (≥10 chars).

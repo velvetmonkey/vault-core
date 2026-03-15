@@ -7,7 +7,7 @@
 // Entity scanning
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
 // Wikilinks
-export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, } from './wikilinks.js';
+export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
 // Protected zones
 export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, } from './protectedZones.js';
 // Logging (unified cross-product logging)
@@ -19,5 +19,7 @@ setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, saveFlywheelConfigTo
 // Merge Dismissals
 recordMergeDismissal, getDismissedMergePairs, 
 // Vault Index Cache
-saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitiesFts, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
+saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitiesFts, 
+// Content Hashes
+loadContentHashes, saveContentHashBatch, renameContentHash, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
 //# sourceMappingURL=index.js.map

@@ -42,6 +42,8 @@ export {
   resolveAliasWikilinks,
   suggestWikilinks,
   detectImplicitEntities,
+  findEntityMatches,
+  IMPLICIT_EXCLUDE_WORDS,
 } from './wikilinks.js';
 
 // Protected zones
@@ -100,6 +102,10 @@ export {
   loadVaultIndexCache,
   getVaultIndexCacheInfo,
   rebuildEntitiesFts,
+  // Content Hashes
+  loadContentHashes,
+  saveContentHashBatch,
+  renameContentHash,
   SCHEMA_VERSION,
   STATE_DB_FILENAME,
   FLYWHEEL_DIR,
