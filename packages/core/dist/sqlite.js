@@ -568,6 +568,13 @@ function initSchema(db) {
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
 }
+function deleteStateDbFiles(dbPath) {
+    for (const suffix of ['', '-wal', '-shm']) {
+        const p = dbPath + suffix;
+        if (fs.existsSync(p))
+            fs.unlinkSync(p);
+    }
+}
 /**
  * Open or create the state database for a vault
  *
@@ -583,19 +590,31 @@ export function openStateDb(vaultPath) {
         const stat = fs.statSync(dbPath);
         if (stat.size === 0) {
             console.error(`[vault-core] Deleting corrupted 0-byte state.db at ${dbPath}`);
-            fs.unlinkSync(dbPath);
-            // Also remove WAL and SHM files if they exist
-            const walPath = dbPath + '-wal';
-            const shmPath = dbPath + '-shm';
-            if (fs.existsSync(walPath))
-                fs.unlinkSync(walPath);
-            if (fs.existsSync(shmPath))
-                fs.unlinkSync(shmPath);
+            deleteStateDbFiles(dbPath);
         }
     }
-    const db = new Database(dbPath);
-    // Initialize schema
-    initSchema(db);
+    let db;
+    try {
+        db = new Database(dbPath);
+        initSchema(db);
+    }
+    catch (err) {
+        // Corrupted database (e.g., "file is not a database") — delete and retry once
+        if (fs.existsSync(dbPath)) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[vault-core] Corrupted state.db (${msg}) — deleting and recreating`);
+            try {
+                db?.close();
+            }
+            catch { /* ignore */ }
+            deleteStateDbFiles(dbPath);
+            db = new Database(dbPath);
+            initSchema(db);
+        }
+        else {
+            throw err;
+        }
+    }
     // Prepare all statements
     const stateDb = {
         db,
