@@ -7,7 +7,9 @@
 export type { EntityIndex, EntityCategory, EntityWithAliases, Entity, EntityWithType, ScanOptions, WikilinkOptions, WikilinkResult, ImplicitEntityConfig, ExtendedWikilinkOptions, ImplicitEntityMatch, ResolveAliasOptions, ProtectedZone, ProtectedZoneType, } from './types.js';
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
 export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
-export { getProtectedZones, isInProtectedZone, rangeOverlapsProtectedZone, } from './protectedZones.js';
+export { getProtectedZones, getProtectedZonesRegex, isInProtectedZone, rangeOverlapsProtectedZone, } from './protectedZones.js';
+export { parseMarkdown } from './parseMarkdown.js';
+export { getProtectedZonesFromAst } from './astProtectedZones.js';
 export { OperationLogger, createLoggerFromConfig, generateSessionId, getSessionId, setSessionId, } from './logging/index.js';
 export type { OperationLogEntry, SessionMetrics, AggregatedMetrics, LoggingConfig, ProductId, } from './logging/index.js';
 export { openStateDb, deleteStateDb, stateDbExists, searchEntities, searchEntitiesPrefix, getEntityByName, getEntitiesByAlias, getAllEntitiesFromDb, getEntityIndexFromDb, recordEntityMention, getEntityRecency, getAllRecency, setWriteState, getWriteState, deleteWriteState, setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, saveFlywheelConfigToDb, loadFlywheelConfigFromDb, getStateDbMetadata, recordMergeDismissal, getDismissedMergePairs, saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitiesFts, loadContentHashes, saveContentHashBatch, renameContentHash, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';

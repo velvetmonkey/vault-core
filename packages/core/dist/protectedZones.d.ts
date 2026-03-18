@@ -1,6 +1,9 @@
 /**
  * Protected zones detection for wikilink application
  *
+ * AST-first approach: uses mdast for accurate zone detection (nested callouts,
+ * tables, multi-line HTML), with regex fallback on parse failure.
+ *
  * These are areas in markdown content where wikilinks should NOT be applied:
  * - YAML frontmatter
  * - Code blocks (``` ... ```)
@@ -13,7 +16,8 @@
  * - Obsidian comments (%% ... %%)
  * - Math expressions ($ ... $ and $$ ... $$)
  * - Markdown headers (# to ###### at line start)
- * - Obsidian callouts (> [!type] syntax)
+ * - Obsidian callouts (> [!type] syntax — entire block, including nested)
+ * - Tables (GFM pipe tables)
  */
 import type { ProtectedZone } from './types.js';
 /**
@@ -22,7 +26,15 @@ import type { ProtectedZone } from './types.js';
  */
 export declare function findFrontmatterEnd(content: string): number;
 /**
- * Get all protected zones in content where wikilinks should not be applied
+ * Get all protected zones using regex-only detection (legacy/fallback).
+ * Exported for testing and explicit fallback use.
+ */
+export declare function getProtectedZonesRegex(content: string): ProtectedZone[];
+/**
+ * Get all protected zones in content where wikilinks should not be applied.
+ *
+ * AST-first: parses markdown into AST for accurate detection of nested
+ * callouts, tables, and HTML comments. Falls back to regex on parse failure.
  */
 export declare function getProtectedZones(content: string): ProtectedZone[];
 /**
