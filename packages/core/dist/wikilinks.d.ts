@@ -5,7 +5,7 @@
  * respecting protected zones (code, frontmatter, existing links, etc.)
  *
  * Also supports:
- * - Pattern-based detection for implicit entities (proper nouns, quoted terms)
+ * - Pattern-based detection for implicit entities (proper nouns, acronyms, CamelCase)
  * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
 import type { WikilinkOptions, WikilinkResult, Entity, ExtendedWikilinkOptions, ImplicitEntityMatch, ImplicitEntityConfig, ResolveAliasOptions } from './types.js';
@@ -62,7 +62,7 @@ export declare const IMPLICIT_EXCLUDE_WORDS: Set<string>;
  * This finds potential entities that don't have existing files:
  * - Multi-word proper nouns (e.g., "Marcus Johnson", "Project Alpha")
  * - Single capitalized words after lowercase (e.g., "discussed with Marcus")
- * - Quoted terms (e.g., "Turbopump" becomes [[Turbopump]])
+ * - CamelCase words (e.g., TypeScript, HuggingFace)
  *
  * @param content - The markdown content to analyze
  * @param config - Configuration for detection patterns
