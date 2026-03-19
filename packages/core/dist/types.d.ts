@@ -133,7 +133,7 @@ export interface ImplicitEntityConfig {
      * Which patterns to use for detection
      * @default ['proper-nouns']
      */
-    implicitPatterns?: Array<'proper-nouns' | 'single-caps' | 'camel-case' | 'acronyms'>;
+    implicitPatterns?: Array<'proper-nouns' | 'quoted-terms' | 'single-caps' | 'camel-case' | 'acronyms'>;
     /**
      * Regex patterns to exclude from implicit detection
      * @default ['^The ', '^A ', '^An ', '^This ', '^That ', '^These ', '^Those ']
@@ -165,7 +165,7 @@ export interface ImplicitEntityMatch {
     /** End position in content */
     end: number;
     /** Detection method used */
-    pattern: 'proper-nouns' | 'single-caps' | 'camel-case' | 'acronyms';
+    pattern: 'proper-nouns' | 'quoted-terms' | 'single-caps' | 'camel-case' | 'acronyms';
 }
 /**
  * Options for resolving alias-based wikilinks

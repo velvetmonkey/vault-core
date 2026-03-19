@@ -465,7 +465,7 @@ export function resolveAliasWikilinks(content, entities, options = {}) {
  */
 const DEFAULT_IMPLICIT_CONFIG = {
     detectImplicit: false,
-    implicitPatterns: ['proper-nouns'],
+    implicitPatterns: ['proper-nouns', 'quoted-terms'],
     excludePatterns: ['^The ', '^A ', '^An ', '^This ', '^That ', '^These ', '^Those '],
     minEntityLength: 3,
 };
@@ -616,6 +616,21 @@ export function detectImplicitEntities(content, config = {}) {
             }
         }
     }
+    // Pattern 3: Quoted terms (explicit entity markers)
+    // Matches "Turbopump" -> [[Turbopump]]
+    if (implicitPatterns.includes('quoted-terms')) {
+        const quotedRegex = /"([^"]{3,30})"/g;
+        let match;
+        while ((match = quotedRegex.exec(content)) !== null) {
+            const text = match[1];
+            const start = match.index;
+            const end = start + match[0].length;
+            if (!shouldExclude(text) && !isProtected(start, end)) {
+                detected.push({ text, start, end, pattern: 'quoted-terms' });
+                seenTexts.add(text.toLowerCase());
+            }
+        }
+    }
     // Pattern 4: CamelCase words (TypeScript, YouTube, HuggingFace)
     if (implicitPatterns.includes('camel-case')) {
         const camelRegex = /\b([A-Z][a-z]+[A-Z][a-zA-Z]*)\b/g;
@@ -745,10 +760,18 @@ export function processWikilinks(content, entities, options = {}) {
         let wikilink;
         let replaceStart;
         let replaceEnd;
-        // Replace Term with [[Term]]
-        wikilink = `[[${match.text}]]`;
-        replaceStart = match.start;
-        replaceEnd = match.end;
+        if (match.pattern === 'quoted-terms') {
+            // Replace "Term" with [[Term]] (remove quotes)
+            wikilink = `[[${match.text}]]`;
+            replaceStart = match.start;
+            replaceEnd = match.end;
+        }
+        else {
+            // Replace Term with [[Term]]
+            wikilink = `[[${match.text}]]`;
+            replaceStart = match.start;
+            replaceEnd = match.end;
+        }
         processedContent =
             processedContent.slice(0, replaceStart) +
                 wikilink +
