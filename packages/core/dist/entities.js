@@ -160,10 +160,14 @@ function isDotPath(pathStr) {
     return path.basename(pathStr).startsWith('.');
 }
 /**
+ * Union of all exclude patterns, compiled once at module load for performance
+ */
+const EXCLUDE_UNION = new RegExp(DEFAULT_EXCLUDE_PATTERNS.map(p => `(?:${p.source})`).join('|'), 'i');
+/**
  * Check if entity name matches any exclude pattern
  */
 function matchesExcludePattern(name) {
-    return DEFAULT_EXCLUDE_PATTERNS.some(pattern => pattern.test(name));
+    return EXCLUDE_UNION.test(name);
 }
 /**
  * Organization suffixes for company/team detection

@@ -38,6 +38,11 @@ export declare function getProtectedZonesRegex(content: string): ProtectedZone[]
  */
 export declare function getProtectedZones(content: string): ProtectedZone[];
 /**
+ * Merge overlapping or adjacent protected zones into a single list.
+ * Zones that touch (end === start) or overlap are collapsed.
+ */
+export declare function mergeOverlappingZones(zones: ProtectedZone[]): ProtectedZone[];
+/**
  * Check if a position is within any protected zone
  */
 export declare function isInProtectedZone(position: number, zones: ProtectedZone[]): boolean;

@@ -9,7 +9,7 @@ export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityNa
 // Wikilinks
 export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
 // Protected zones
-export { getProtectedZones, getProtectedZonesRegex, isInProtectedZone, rangeOverlapsProtectedZone, } from './protectedZones.js';
+export { getProtectedZones, getProtectedZonesRegex, isInProtectedZone, mergeOverlappingZones, rangeOverlapsProtectedZone, } from './protectedZones.js';
 // AST parsing
 export { parseMarkdown } from './parseMarkdown.js';
 export { getProtectedZonesFromAst } from './astProtectedZones.js';
