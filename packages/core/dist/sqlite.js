@@ -16,7 +16,7 @@ import * as path from 'path';
 // Constants
 // =============================================================================
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 30;
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
 /** Directory for flywheel state */
@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS wikilink_feedback (
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_wl_feedback_entity ON wikilink_feedback(entity);
+CREATE INDEX IF NOT EXISTS idx_wl_feedback_note_path ON wikilink_feedback(note_path);
 
 -- Wikilink suppressions (v4: auto-suppress false positives)
 CREATE TABLE IF NOT EXISTS wikilink_suppressions (
@@ -205,7 +206,9 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
   session_id TEXT,
   note_paths TEXT,
   duration_ms INTEGER,
-  success INTEGER NOT NULL DEFAULT 1
+  success INTEGER NOT NULL DEFAULT 1,
+  response_tokens INTEGER,
+  baseline_tokens INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_tool_inv_ts ON tool_invocations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_tool_inv_tool ON tool_invocations(tool_name, timestamp);
@@ -424,6 +427,19 @@ CREATE TABLE IF NOT EXISTS session_summaries (
   ended_at INTEGER NOT NULL,
   tool_count INTEGER
 );
+
+-- Retrieval co-occurrence (v30): notes retrieved together build implicit edges
+CREATE TABLE IF NOT EXISTS retrieval_cooccurrence (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_a TEXT NOT NULL,
+  note_b TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  weight REAL NOT NULL DEFAULT 1.0,
+  UNIQUE(note_a, note_b, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_retcooc_notes ON retrieval_cooccurrence(note_a, note_b);
+CREATE INDEX IF NOT EXISTS idx_retcooc_ts ON retrieval_cooccurrence(timestamp);
 `;
 // =============================================================================
 // Database Initialization
@@ -565,6 +581,16 @@ function initSchema(db) {
         // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
         // v28: content_hashes table (persist watcher content hashes across restarts)
         // (created by SCHEMA_SQL above via CREATE TABLE IF NOT EXISTS)
+        // v29: index on wikilink_feedback(note_path) for temporal analysis queries
+        // (created by SCHEMA_SQL above via CREATE INDEX IF NOT EXISTS)
+        // v30: token economics columns on tool_invocations
+        if (currentVersion < 30) {
+            const hasResponseTokens = db.prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('tool_invocations') WHERE name = 'response_tokens'`).get();
+            if (hasResponseTokens.cnt === 0) {
+                db.exec('ALTER TABLE tool_invocations ADD COLUMN response_tokens INTEGER');
+                db.exec('ALTER TABLE tool_invocations ADD COLUMN baseline_tokens INTEGER');
+            }
+        }
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
 }
@@ -575,6 +601,32 @@ function deleteStateDbFiles(dbPath) {
             fs.unlinkSync(p);
     }
 }
+/** Back up state.db before opening (skip if missing or 0 bytes). */
+function backupStateDb(dbPath) {
+    try {
+        if (!fs.existsSync(dbPath))
+            return;
+        const stat = fs.statSync(dbPath);
+        if (stat.size === 0)
+            return;
+        fs.copyFileSync(dbPath, dbPath + '.backup');
+    }
+    catch (err) {
+        console.error(`[vault-core] Failed to back up state.db: ${err instanceof Error ? err.message : err}`);
+    }
+}
+/** Preserve a corrupted database for inspection before deleting. */
+function preserveCorruptedDb(dbPath) {
+    try {
+        if (fs.existsSync(dbPath)) {
+            fs.copyFileSync(dbPath, dbPath + '.corrupt');
+            console.error(`[vault-core] Corrupted database preserved at ${dbPath}.corrupt`);
+        }
+    }
+    catch {
+        // Best effort — don't block recovery
+    }
+}
 /**
  * Open or create the state database for a vault
  *
@@ -583,6 +635,8 @@ function deleteStateDbFiles(dbPath) {
  */
 export function openStateDb(vaultPath) {
     const dbPath = getStateDbPath(vaultPath);
+    // Back up existing database before any mutations
+    backupStateDb(dbPath);
     // Guard: Delete corrupted 0-byte database files
     // This can happen when better-sqlite3 fails to compile (e.g., Node 24)
     // and creates an empty file instead of a valid SQLite database
@@ -599,10 +653,11 @@ export function openStateDb(vaultPath) {
         initSchema(db);
     }
     catch (err) {
-        // Corrupted database (e.g., "file is not a database") — delete and retry once
+        // Corrupted database (e.g., "file is not a database") — preserve, delete, and retry once
         if (fs.existsSync(dbPath)) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[vault-core] Corrupted state.db (${msg}) — deleting and recreating`);
+            preserveCorruptedDb(dbPath);
             try {
                 db?.close();
             }
