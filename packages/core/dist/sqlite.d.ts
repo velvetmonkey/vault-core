@@ -75,7 +75,7 @@ export interface StateDb {
     close: () => void;
 }
 /** Current schema version - bump when schema changes */
-export declare const SCHEMA_VERSION = 30;
+export declare const SCHEMA_VERSION = 31;
 /** State database filename */
 export declare const STATE_DB_FILENAME = "state.db";
 /** Directory for flywheel state */
