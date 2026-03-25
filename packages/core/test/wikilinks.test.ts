@@ -147,6 +147,24 @@ Learn React here`;
     expect(result.content).toContain('[[Project]]');
   });
 
+  it('excludes "Month End" from auto-linking', () => {
+    const content = 'The config files are off-limits for Month End to edit';
+    const result = applyWikilinks(content, [
+      { name: 'Month End', path: 'month-end.md', aliases: [] }
+    ]);
+    expect(result.content).toBe(content);
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('excludes "Quarterly Review" from auto-linking', () => {
+    const content = 'Prepare for the Quarterly Review next week';
+    const result = applyWikilinks(content, [
+      { name: 'Quarterly Review', path: 'quarterly-review.md', aliases: [] }
+    ]);
+    expect(result.content).toBe(content);
+    expect(result.linksAdded).toBe(0);
+  });
+
   it('should handle case-insensitive matching', () => {
     const content = 'Using react for development';
     const entities = ['React'];
@@ -171,6 +189,36 @@ Learn React here`;
 
     expect(result.content).toBe(content);
     expect(result.linksAdded).toBe(0);
+  });
+
+  describe('bracket-adjacent filtering', () => {
+    it('does not insert wikilinks adjacent to closing parenthesis', () => {
+      const content = '("You\'ve got momentum, focus on X today")';
+      const result = applyWikilinks(content, ['today']);
+      expect(result.content).toBe(content);
+      expect(result.linksAdded).toBe(0);
+    });
+
+    it('does not insert wikilinks adjacent to opening bracket', () => {
+      const content = 'This is a [test] example';
+      const result = applyWikilinks(content, ['test']);
+      expect(result.content).toBe(content);
+      expect(result.linksAdded).toBe(0);
+    });
+
+    it('still links entities surrounded by spaces', () => {
+      const content = 'We discussed React the progress';
+      const result = applyWikilinks(content, ['React']);
+      expect(result.content).toBe('We discussed [[React]] the progress');
+      expect(result.linksAdded).toBe(1);
+    });
+
+    it('does not insert wikilinks adjacent to curly braces', () => {
+      const content = 'The value is {test} here';
+      const result = applyWikilinks(content, ['test']);
+      expect(result.content).toBe(content);
+      expect(result.linksAdded).toBe(0);
+    });
   });
 
   describe('alias matching', () => {
@@ -462,38 +510,21 @@ describe('detectImplicitEntities', () => {
   });
 
   describe('quoted terms pattern', () => {
-    it('should detect quoted terms', () => {
+    it('should detect quoted terms as implicit entities', () => {
       const content = 'We need to test the "Turbopump" component next week.';
       const matches = detectImplicitEntities(content);
 
-      expect(matches).toHaveLength(1);
-      expect(matches[0].text).toBe('Turbopump');
-      expect(matches[0].pattern).toBe('quoted-terms');
-    });
-
-    it('should detect multiple quoted terms', () => {
-      const content = 'The "Propulsion System" uses a "Turbopump" for fuel.';
-      const matches = detectImplicitEntities(content);
-
-      expect(matches).toHaveLength(2);
-      expect(matches.map(m => m.text)).toContain('Propulsion System');
+      // Quoted-terms pattern detects quoted text as entities
       expect(matches.map(m => m.text)).toContain('Turbopump');
+      expect(matches.find(m => m.text === 'Turbopump')?.pattern).toBe('quoted-terms');
     });
 
-    it('should not match very short quoted terms', () => {
-      const content = 'The "API" is ready.';
-      const matches = detectImplicitEntities(content, { minEntityLength: 4 });
-
-      // "API" is only 3 chars, should be excluded with minEntityLength: 4
-      expect(matches).toHaveLength(0);
-    });
-
-    it('should not match very long quoted terms', () => {
-      const content = 'Check out "This is a really long title that exceeds thirty characters" for details.';
+    it('should not detect very long prose in quotes', () => {
+      // Regex limits to 3-30 chars, so long prose won't match
+      const content = 'He said "This is a very long sentence that exceeds the thirty character limit for quoted terms" today.';
       const matches = detectImplicitEntities(content);
 
-      // Quoted regex limits to 30 chars
-      expect(matches).toHaveLength(0);
+      expect(matches.map(m => m.text)).not.toContain('This is a very long sentence that exceeds the thirty character limit for quoted terms');
     });
   });
 
@@ -501,7 +532,7 @@ describe('detectImplicitEntities', () => {
     it('should detect single capitalized words after lowercase when enabled', () => {
       const content = 'I spoke with Marcus about the project.';
       const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
+        implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
       expect(matches.map(m => m.text)).toContain('Marcus');
@@ -522,7 +553,7 @@ describe('detectImplicitEntities', () => {
       const content = 'I talked to Marcus yesterday.';
       const matchesDefault = detectImplicitEntities(content);
       const matchesWithSingleCaps = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
+        implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
       // Default should not have Marcus (single word)
@@ -573,7 +604,7 @@ describe('detectImplicitEntities', () => {
     it('should exclude common words like Monday, January', () => {
       const content = 'Meeting with John Smith on Monday January 5th.';
       const matches = detectImplicitEntities(content, {
-        implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
+        implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
       expect(matches.map(m => m.text)).toContain('John Smith');
@@ -620,6 +651,123 @@ describe('detectImplicitEntities', () => {
       expect(matches.map(m => m.text)).toContain('Specialist Verticals');
     });
   });
+
+  describe('sentence starter filtering', () => {
+    it('should exclude newly added sentence starter words from multi-word proper nouns', () => {
+      const content = 'Target Alpha was the goal. Build Process is important.';
+      const matches = detectImplicitEntities(content);
+
+      // "Target" and "Build" are sentence starters, so "Target Alpha" should
+      // become just "Alpha" (single word, dropped) and "Build Process" → "Process" (dropped)
+      expect(matches.map(m => m.text)).not.toContain('Target Alpha');
+      expect(matches.map(m => m.text)).not.toContain('Build Process');
+    });
+
+    it('should still detect proper nouns that are not sentence starters', () => {
+      const content = 'Working with Marcus Johnson on the Alpha Project launch.';
+      const matches = detectImplicitEntities(content);
+
+      expect(matches.map(m => m.text)).toContain('Marcus Johnson');
+      expect(matches.map(m => m.text)).toContain('Alpha Project');
+    });
+  });
+
+  describe('acronym length filtering', () => {
+    it('should detect short ALL-CAPS acronyms (3-5 chars)', () => {
+      const content = 'The API uses ONNX and LLM for processing.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['acronyms']
+      });
+
+      expect(matches.map(m => m.text)).toContain('API');
+      expect(matches.map(m => m.text)).toContain('ONNX');
+      expect(matches.map(m => m.text)).toContain('LLM');
+    });
+
+    it('should NOT detect long ALL-CAPS words (>5 chars) as acronyms', () => {
+      const content = 'See ARCHITECTURE and TESTING and TOOLS and README for details.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['acronyms']
+      });
+
+      expect(matches.map(m => m.text)).not.toContain('ARCHITECTURE');
+      expect(matches.map(m => m.text)).not.toContain('TESTING');
+      expect(matches.map(m => m.text)).not.toContain('README');
+    });
+
+    it('should detect exactly 5-char acronyms', () => {
+      const content = 'The ONNX format is popular.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['acronyms']
+      });
+
+      expect(matches.map(m => m.text)).toContain('ONNX');
+    });
+  });
+
+  describe('hyphenated descriptor exclusion', () => {
+    it('should exclude lowercase hyphenated descriptors from entity matching', () => {
+      const content = 'This is a local-first and self-improving system.';
+      const entities = ['local-first', 'self-improving'];
+      const result = applyWikilinks(content, entities);
+
+      // Hyphenated lowercase words are descriptors, not entities
+      expect(result.linksAdded).toBe(0);
+      expect(result.content).not.toContain('[[local-first]]');
+      expect(result.content).not.toContain('[[self-improving]]');
+    });
+
+    it('should NOT exclude mixed-case hyphenated entities', () => {
+      // Mixed-case hyphenated entities like company names should still work
+      const content = 'Using Hewlett-Packard equipment.';
+      const entities = ['Hewlett-Packard'];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.linksAdded).toBe(1);
+      expect(result.content).toContain('[[Hewlett-Packard]]');
+    });
+  });
+
+  describe('EXCLUDE_WORDS expansion', () => {
+    it('should exclude common adjectives and verbs from entity linking', () => {
+      const content = 'The target was to create a simple test and avoid a build.';
+      const entities = ['target', 'create', 'simple', 'test', 'avoid', 'build'];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.linksAdded).toBe(0);
+    });
+  });
+
+  describe('regression: real entities still link correctly', () => {
+    it('should still link real multi-word proper nouns', () => {
+      const content = 'Meeting with John Smith about Project Alpha tomorrow.';
+      const matches = detectImplicitEntities(content);
+
+      expect(matches.map(m => m.text)).toContain('John Smith');
+      expect(matches.map(m => m.text)).toContain('Project Alpha');
+    });
+
+    it('should still link real entities via applyWikilinks', () => {
+      const content = 'Working with React and TypeScript on the API.';
+      const entities = ['React', 'TypeScript', 'API'];
+      const result = applyWikilinks(content, entities);
+
+      expect(result.content).toContain('[[React]]');
+      expect(result.content).toContain('[[TypeScript]]');
+      expect(result.content).toContain('[[API]]');
+      expect(result.linksAdded).toBe(3);
+    });
+
+    it('should still detect CamelCase words', () => {
+      const content = 'Using TypeScript and HuggingFace for the project.';
+      const matches = detectImplicitEntities(content, {
+        implicitPatterns: ['camel-case']
+      });
+
+      expect(matches.map(m => m.text)).toContain('TypeScript');
+      expect(matches.map(m => m.text)).toContain('HuggingFace');
+    });
+  });
 });
 
 describe('processWikilinks', () => {
@@ -660,15 +808,15 @@ describe('processWikilinks', () => {
     expect(result.implicitEntities || []).not.toContain('Marcus Johnson');
   });
 
-  it('should handle quoted terms and convert to wikilinks', () => {
+  it('should convert quoted terms to wikilinks', () => {
     const content = 'Testing the "Turbopump" component today.';
     const entities: string[] = [];
 
     const result = processWikilinks(content, entities, { detectImplicit: true });
 
-    // "Turbopump" should become [[Turbopump]]
+    // Quoted-terms pattern replaces "Term" with [[Term]]
     expect(result.content).toContain('[[Turbopump]]');
-    expect(result.content).not.toContain('"Turbopump"');
+    expect(result.implicitEntities).toContain('Turbopump');
   });
 
   it('should not link entities matching notePath', () => {
@@ -678,7 +826,7 @@ describe('processWikilinks', () => {
     const result = processWikilinks(content, entities, {
       detectImplicit: true,
       notePath: 'notes/Daily Note.md',
-      implicitPatterns: ['proper-nouns', 'quoted-terms', 'single-caps']
+      implicitPatterns: ['proper-nouns', 'single-caps']
     });
 
     // Should not create self-link to Daily Note
@@ -833,5 +981,391 @@ describe('resolveAliasWikilinks', () => {
 
     expect(result.content).toBe('Using [[MCP|model context protocol]] and [[React]] together');
     expect(result.linksAdded).toBe(1);
+  });
+});
+
+describe('applyWikilinks alreadyLinked option', () => {
+  it('does not re-link an entity that was already linked by a prior step', () => {
+    // Simulate: resolveAliasWikilinks already resolved [[OC-39181]] → [[OC39181|OC-39181]]
+    // Step 2 (applyWikilinks) should NOT also insert [[OC39181]] for a later plain occurrence
+    const contentAfterStep1 = 'Ticket [[OC39181|OC-39181]] was closed. Review OC39181 again later.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: ['OC-39181'] }];
+    const step1Linked = new Set(['oc39181']);
+
+    const result = applyWikilinks(contentAfterStep1, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked: step1Linked,
+    });
+
+    // The existing piped link should remain unchanged
+    expect(result.content).toContain('[[OC39181|OC-39181]]');
+    // No bare [[OC39181]] should be inserted (entity already linked)
+    expect(result.content.match(/\[\[OC39181/g)?.length).toBe(1);
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('links entity when alreadyLinked is empty', () => {
+    const content = 'Review OC39181 again later.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: ['OC-39181'] }];
+
+    const result = applyWikilinks(content, entities, {
+      firstOccurrenceOnly: true,
+      alreadyLinked: new Set(),
+    });
+
+    expect(result.content).toContain('[[OC39181]]');
+    expect(result.linksAdded).toBe(1);
+  });
+
+  it('combines resolveAliasWikilinks + applyWikilinks without double-linking', () => {
+    // Full two-step simulation: the exact bug scenario for OC39181/OC-39181
+    const originalContent = 'Ticket [[OC-39181]] was closed. Review OC39181 again later.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: ['OC-39181'] }];
+
+    // Step 1: resolve alias wikilinks
+    const resolved = resolveAliasWikilinks(originalContent, entities, { caseInsensitive: true });
+    expect(resolved.content).toContain('[[OC39181|OC-39181]]');
+    expect(resolved.linkedEntities).toContain('OC39181');
+
+    // Step 2: apply wikilinks with step1 results fed in as alreadyLinked
+    const step1Linked = new Set(resolved.linkedEntities.map(e => e.toLowerCase()));
+    const final = applyWikilinks(resolved.content, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked: step1Linked,
+    });
+
+    // Should have exactly one [[OC39181... link (the piped one from Step 1)
+    expect(final.content).toContain('[[OC39181|OC-39181]]');
+    expect(final.content.match(/\[\[OC39181/g)?.length).toBe(1);
+    expect(final.linksAdded).toBe(0);
+  });
+
+  it('does not link entity already present in existing note content (cross-call deduplication)', () => {
+    // Simulate: a prior vault_add_to_section call already linked OC39181 in a previous section.
+    // When the next call processes new content, it should extract already-linked entities
+    // from the existing note and add them to alreadyLinked, preventing double-linking.
+    const existingNoteContent = 'Previous section.\n[[OC39181|OC-39181]] was closed.\n';
+    const newSectionContent = 'Follow-up: OC39181 still needs review.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: ['OC-39181'] }];
+
+    // Extract already-linked entities from existing content (as processWikilinks now does)
+    const alreadyLinked = new Set<string>();
+    for (const match of existingNoteContent.matchAll(/\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]/g)) {
+      alreadyLinked.add(match[1].toLowerCase());
+    }
+    expect(alreadyLinked.has('oc39181')).toBe(true);
+
+    const result = applyWikilinks(newSectionContent, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked,
+    });
+
+    // Entity already linked in note → should not be linked in new section
+    expect(result.content).toBe(newSectionContent);
+    expect(result.linksAdded).toBe(0);
+  });
+
+  it('still links entity when existing content has no prior link for it', () => {
+    const existingNoteContent = 'Previous section with unrelated content.\n';
+    const newSectionContent = 'Follow-up: OC39181 needs review.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: [] }];
+
+    const alreadyLinked = new Set<string>();
+    for (const match of existingNoteContent.matchAll(/\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]/g)) {
+      alreadyLinked.add(match[1].toLowerCase());
+    }
+
+    const result = applyWikilinks(newSectionContent, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked,
+    });
+
+    expect(result.content).toContain('[[OC39181]]');
+    expect(result.linksAdded).toBe(1);
+  });
+});
+
+describe('P2/T3: Deduplication and format consistency', () => {
+  it('same entity appears 3 times — only first is linked (firstOccurrenceOnly)', () => {
+    const content = 'React is great. I love React. React rocks!';
+    const entities = ['React'];
+    const result = applyWikilinks(content, entities, { firstOccurrenceOnly: true });
+
+    // Only the first occurrence should be linked
+    expect(result.content).toBe('[[React]] is great. I love React. React rocks!');
+    expect(result.linksAdded).toBe(1);
+
+    // Count wikilinks: should be exactly 1
+    const wikilinks = result.content.match(/\[\[React\]\]/g);
+    expect(wikilinks).toHaveLength(1);
+  });
+
+  it('consistent format: alias entity linked via alias gets piped format only once', () => {
+    // Entity "OC39181" has alias "OC-39181"
+    // Text has: [[OC-39181]] (existing alias link), then "OC39181" (plain), then "OC-39181" (plain)
+    const content = 'Ticket [[OC-39181]] was closed. Review OC39181 again. Also see OC-39181.';
+    const entities = [{ name: 'OC39181', path: 'OC39181.md', aliases: ['OC-39181'] }];
+
+    // Step 1: resolve alias wikilinks
+    const resolved = resolveAliasWikilinks(content, entities, { caseInsensitive: true });
+
+    // Step 2: apply with alreadyLinked from step 1
+    const step1Linked = new Set(resolved.linkedEntities.map(e => e.toLowerCase()));
+    const final = applyWikilinks(resolved.content, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked: step1Linked,
+    });
+
+    // Should have exactly one piped wikilink from Step 1, no additional bare wikilinks
+    const allLinks = final.content.match(/\[\[OC39181[^\]]*\]\]/g) || [];
+    expect(allLinks).toHaveLength(1);
+    expect(allLinks[0]).toBe('[[OC39181|OC-39181]]');
+  });
+
+  it('no mixed formats: bare and piped links for same entity should not coexist', () => {
+    // Simulate content that already has a bare [[React]] link
+    const content = 'Using [[React]] for the UI. Also React is great.';
+    const entities = [{ name: 'React', path: 'React.md', aliases: [] }];
+
+    // Extract already-linked from existing content
+    const alreadyLinked = new Set<string>();
+    for (const match of content.matchAll(/\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]/g)) {
+      alreadyLinked.add(match[1].toLowerCase());
+    }
+
+    const result = applyWikilinks(content, entities, {
+      firstOccurrenceOnly: true,
+      caseInsensitive: true,
+      alreadyLinked,
+    });
+
+    // Should not add a second link — entity is already linked
+    expect(result.linksAdded).toBe(0);
+    expect(result.content).toBe(content);
+
+    // Only one [[React]] in the output
+    const reactLinks = result.content.match(/\[\[React[^\]]*\]\]/g) || [];
+    expect(reactLinks).toHaveLength(1);
+  });
+});
+
+describe('AST zones: wikilinks integration', () => {
+  it('does not insert links inside nested callouts', () => {
+    const content = `> [!note] Important
+> Machine Learning is used here
+> > [!warning] Caution
+> > Artificial Intelligence warning
+
+Machine Learning is also mentioned outside`;
+
+    const entities = ['Machine Learning', 'Artificial Intelligence'];
+    const result = applyWikilinks(content, entities);
+
+    // Should link entities outside callout
+    expect(result.content).toContain('[[Machine Learning]] is also mentioned outside');
+    // Should NOT link entities inside the callout
+    const calloutPart = result.content.split('\n\n')[0];
+    expect(calloutPart).not.toContain('[[Machine Learning]]');
+    expect(calloutPart).not.toContain('[[Artificial Intelligence]]');
+  });
+
+  it('does not insert links inside GFM tables', () => {
+    const content = `# Overview
+
+| Name | Description |
+|------|-------------|
+| Machine Learning | A subset of AI |
+| TypeScript | A typed language |
+
+Machine Learning is powerful.`;
+
+    const entities = ['Machine Learning', 'TypeScript'];
+    const result = applyWikilinks(content, entities);
+
+    // Should link entities outside table
+    expect(result.content).toContain('[[Machine Learning]] is powerful');
+    // Should NOT link inside table cells
+    const tablePart = result.content.split('\n\n')[1];
+    expect(tablePart).not.toContain('[[Machine Learning]]');
+    expect(tablePart).not.toContain('[[TypeScript]]');
+  });
+
+  it('does not insert links inside multi-line HTML comments', () => {
+    const content = `Text before
+
+<!-- This comment mentions
+Machine Learning and
+Artificial Intelligence -->
+
+Machine Learning is great outside the comment`;
+
+    const entities = ['Machine Learning', 'Artificial Intelligence'];
+    const result = applyWikilinks(content, entities);
+
+    // Should link outside
+    expect(result.content).toContain('[[Machine Learning]] is great outside');
+    // Should NOT link inside HTML comment
+    const commentPart = result.content.slice(
+      result.content.indexOf('<!--'),
+      result.content.indexOf('-->') + 3
+    );
+    expect(commentPart).not.toContain('[[Machine Learning]]');
+    expect(commentPart).not.toContain('[[Artificial Intelligence]]');
+  });
+});
+
+describe('noise reduction', () => {
+  describe('T1: minimum alias length guard', () => {
+    it('should not match single-char aliases like "I" for Ben', () => {
+      const result = applyWikilinks('I went to the store', [{ name: 'Ben', aliases: ['I'] }]);
+      expect(result.content).toBe('I went to the store');
+      expect(result.linksAdded).toBe(0);
+    });
+
+    it('should not match two-char common-word aliases like "us" and "me"', () => {
+      const result = applyWikilinks('Tell us about me', [
+        { name: 'USA', aliases: ['us'] },
+        { name: 'Ben', aliases: ['me'] },
+      ]);
+      expect(result.content).toBe('Tell us about me');
+      expect(result.linksAdded).toBe(0);
+    });
+
+    it('should still match two-char non-common aliases like JS', () => {
+      const result = applyWikilinks('The JS framework', [{ name: 'JavaScript', aliases: ['JS'] }]);
+      expect(result.content).toContain('[[JavaScript|JS]]');
+      expect(result.linksAdded).toBe(1);
+    });
+  });
+
+  describe('T2: EXCLUDE_WORDS expansion', () => {
+    it('should not match common words used as entity names', () => {
+      const words = ['walk', 'rest', 'share', 'surface', 'cover', 'skip'];
+      for (const word of words) {
+        const result = applyWikilinks(`I need to ${word} now`, [word]);
+        expect(result.linksAdded).toBe(0);
+      }
+    });
+
+    it('should not match common words used as entity aliases', () => {
+      const result = applyWikilinks('Time for a walk and some rest', [
+        { name: 'Go for a walk', aliases: ['walk'] },
+        { name: 'REST API', aliases: ['rest'] },
+      ]);
+      expect(result.linksAdded).toBe(0);
+    });
+
+    it('should still match proper entity names not in EXCLUDE_WORDS', () => {
+      const result = applyWikilinks('Working on Flywheel today', ['Flywheel']);
+      expect(result.content).toContain('[[Flywheel]]');
+      expect(result.linksAdded).toBe(1);
+    });
+  });
+
+  describe('T3: cross-line matching prevention', () => {
+    it('should not match proper nouns across newlines', () => {
+      const result = detectImplicitEntities('Cover\nVandalism promise');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Cover Vandalism');
+      expect(names).not.toContain('Cover\nVandalism');
+    });
+
+    it('should not match across newlines in multi-line text', () => {
+      const result = detectImplicitEntities('Hastings Direct\nThanks for choosing');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Hastings Direct Thanks');
+      expect(names).not.toContain('Hastings Direct\nThanks');
+    });
+
+    it('should still match proper nouns on the same line', () => {
+      const result = detectImplicitEntities('met with Marcus Johnson yesterday');
+      const names = result.map(m => m.text);
+      expect(names).toContain('Marcus Johnson');
+    });
+  });
+
+  describe('T4: sentence starter trimming', () => {
+    it('should trim "So" from proper noun matches', () => {
+      const result = detectImplicitEntities('So Fartimus Venturi is here');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('So Fartimus Venturi');
+    });
+
+    it('should trim "Hello" from proper noun matches', () => {
+      const result = detectImplicitEntities('Hello Ben Smith arrived');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Hello Ben Smith');
+    });
+
+    it('should trim "Mr" from proper noun matches', () => {
+      const result = detectImplicitEntities('Mr Ben Cassie signed');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Mr Ben Cassie');
+    });
+
+    it('should trim "How" and keep multi-word remainder', () => {
+      const result = detectImplicitEntities('it is about How To Approach Them');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('How To Approach Them');
+    });
+
+    it('should trim "Skip" and skip single-word remainder', () => {
+      const result = detectImplicitEntities('about Skip Twitter today');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Skip Twitter');
+    });
+  });
+
+  describe('T5: IMPLICIT_EXCLUDE_WORDS expansion', () => {
+    it('should not detect common adjectives as implicit entities via single-caps', () => {
+      // single-caps pattern requires lowercase char + space before the capitalized word
+      const adjectives = ['Comprehensive', 'Enhanced', 'Protected', 'Missing', 'Direct'];
+      for (const adj of adjectives) {
+        const result = detectImplicitEntities(`text goes ${adj} review of things`);
+        const names = result.map(m => m.text);
+        expect(names).not.toContain(adj);
+      }
+    });
+
+    it('should not detect common past participles as implicit entities', () => {
+      const result = detectImplicitEntities('text goes Discussed the plan with team');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('Discussed');
+    });
+
+    it('should still detect real proper nouns via proper-nouns pattern', () => {
+      // proper-nouns is in the default config (multi-word capitalized phrases)
+      const result = detectImplicitEntities('talked with Marcus Johnson yesterday');
+      const names = result.map(m => m.text);
+      expect(names).toContain('Marcus Johnson');
+    });
+  });
+
+  describe('T6: pure punctuation exclusion', () => {
+    it('should not detect quoted punctuation like "* + *" as entities', () => {
+      // Regression: markdown italic markers inside quotes were matched by quoted-terms
+      const content = '*"Cognitive sovereignty for your Obsidian vault."* + *"All yours"*';
+      const result = detectImplicitEntities(content);
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('* + *');
+    });
+
+    it('should not detect pure symbols as entities', () => {
+      const result = detectImplicitEntities('symbols like "+++" and "---" are not entities');
+      const names = result.map(m => m.text);
+      expect(names).not.toContain('+++');
+      expect(names).not.toContain('---');
+    });
+
+    it('should still detect real quoted terms', () => {
+      const result = detectImplicitEntities('the concept of "Cognitive Sovereignty" matters');
+      const names = result.map(m => m.text);
+      expect(names).toContain('Cognitive Sovereignty');
+    });
   });
 });
