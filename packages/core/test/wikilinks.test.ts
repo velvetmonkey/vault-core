@@ -138,13 +138,15 @@ Learn React here`;
   });
 
   it('should exclude common words', () => {
-    const content = 'Meeting on Monday for the project';
-    const entities = ['Monday', 'Project'];
+    const content = 'Meeting on Monday for the project using Flywheel';
+    const entities = ['Monday', 'Project', 'Flywheel'];
     const result = applyWikilinks(content, entities);
 
-    // Monday should be excluded
+    // Monday and Project are common English words — excluded from auto-linking
     expect(result.content).not.toContain('[[Monday]]');
-    expect(result.content).toContain('[[Project]]');
+    expect(result.content).not.toContain('[[Project]]');
+    // Flywheel is not a common word — should be linked
+    expect(result.content).toContain('[[Flywheel]]');
   });
 
   it('excludes "Month End" from auto-linking', () => {
@@ -246,14 +248,26 @@ Learn React here`;
     });
 
     it('should preserve case in display text when matched via alias', () => {
+      // Short uppercase aliases (≤4 chars) match case-sensitively
+      const content = 'Check the PRD for details';
+      const entities = [
+        { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
+      ];
+      const result = applyWikilinks(content, entities, { caseInsensitive: true });
+
+      // PRD matches PRD (case-sensitive for short uppercase aliases)
+      expect(result.content).toBe('Check the [[Product Requirements Document|PRD]] for details');
+    });
+
+    it('should NOT match short uppercase alias case-insensitively', () => {
       const content = 'Check the prd for details';
       const entities = [
         { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
       ];
       const result = applyWikilinks(content, entities, { caseInsensitive: true });
 
-      // Should preserve the original case of the matched text
-      expect(result.content).toBe('Check the [[Product Requirements Document|prd]] for details');
+      // "prd" (lowercase) should NOT match "PRD" (short uppercase alias requires exact case)
+      expect(result.content).toBe('Check the prd for details');
     });
 
     it('should handle multiple aliases for same entity', () => {
@@ -338,6 +352,60 @@ Learn React here`;
       expect(result.content).toContain('[[MCP|Model Context Protocol]]');
       expect(result.content).toContain('about [[MCP]]');
       expect(result.linksAdded).toBe(2);
+    });
+  });
+
+  describe('stemmed matching', () => {
+    it('should match morphological variants via Porter stemming', () => {
+      const result = applyWikilinks(
+        'Check the Pipeline configuration',
+        [{ name: 'Pipelines', path: 'Pipelines.md', aliases: [] }]
+      );
+      expect(result.content).toContain('[[Pipelines|Pipeline]]');
+      expect(result.linksAdded).toBe(1);
+    });
+
+    it('should match -ing forms to base entity', () => {
+      const result = applyWikilinks(
+        'She was Sprinting across the field',
+        [{ name: 'Sprint', path: 'Sprint.md', aliases: [] }]
+      );
+      expect(result.content).toContain('[[Sprint|Sprinting]]');
+    });
+
+    it('should NOT stem-match unrelated words (Hero ≠ Hera)', () => {
+      const result = applyWikilinks(
+        'The hero saved the day',
+        [{ name: 'Hera', path: 'Hera.md', aliases: [] }]
+      );
+      expect(result.content).not.toContain('[[Hera');
+    });
+
+    it('should skip stemming for short entities (<4 chars)', () => {
+      const result = applyWikilinks(
+        'Using the APIs today',
+        [{ name: 'API', path: 'API.md', aliases: [] }]
+      );
+      // "APIs" should NOT stem-match "API" since entity is only 3 chars
+      expect(result.content).not.toContain('[[API|APIs]]');
+    });
+
+    it('should skip stemming for multi-word entities', () => {
+      const result = applyWikilinks(
+        'Running the Pull Requests review',
+        [{ name: 'Pull Request', path: 'Pull Request.md', aliases: [] }]
+      );
+      // Multi-word entities need exact matching, not stemming
+      expect(result.content).not.toContain('[[Pull Request|Pull Requests]]');
+    });
+
+    it('should prefer exact match over stemmed match', () => {
+      const result = applyWikilinks(
+        'Using Pipelines and Pipeline tools',
+        [{ name: 'Pipelines', path: 'Pipelines.md', aliases: [] }]
+      );
+      // Exact match "Pipelines" should be preferred
+      expect(result.content).toContain('[[Pipelines]]');
     });
   });
 });
@@ -449,8 +517,9 @@ describe('suggestWikilinks', () => {
       expect(suggestions.map(s => s.entity)).toContain('Product Requirements Document');
     });
 
-    it('should find alias case-insensitively', () => {
-      const content = 'Check the prd for details';
+    it('should find short uppercase alias case-sensitively', () => {
+      // Short uppercase aliases (≤4 chars) match case-sensitively
+      const content = 'Check the PRD for details';
       const entities = [
         { name: 'Product Requirements Document', path: 'Product Requirements Document.md', aliases: ['PRD'] }
       ];
@@ -458,6 +527,18 @@ describe('suggestWikilinks', () => {
 
       expect(suggestions).toHaveLength(1);
       expect(suggestions[0].entity).toBe('Product Requirements Document');
+    });
+
+    it('should find longer alias case-insensitively', () => {
+      const content = 'Check the prism doc for details';
+      const entities = [
+        { name: 'PRISM Architecture', path: 'PRISM Architecture.md', aliases: ['PRISM'] }
+      ];
+      const suggestions = suggestWikilinks(content, entities, { caseInsensitive: true });
+
+      // "PRISM" is 5 chars, so normal case-insensitive matching applies
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].entity).toBe('PRISM Architecture');
     });
   });
 });

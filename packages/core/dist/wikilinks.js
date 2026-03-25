@@ -9,28 +9,29 @@
  * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
 import { getProtectedZones, rangeOverlapsProtectedZone } from './protectedZones.js';
+import { stem } from './stemmer.js';
 /**
  * Get all search terms for an entity (name + aliases)
  * Returns tuples of [searchTerm, entityName] for proper linking
  */
 function getSearchTerms(entity) {
     if (typeof entity === 'string') {
-        return [{ term: entity, entityName: entity }];
+        return [{ term: entity, entityName: entity, isAlias: false }];
     }
     // Include the entity name and all aliases
     const terms = [
-        { term: entity.name, entityName: entity.name }
+        { term: entity.name, entityName: entity.name, isAlias: false }
     ];
     for (const alias of entity.aliases) {
-        terms.push({ term: alias, entityName: entity.name });
+        terms.push({ term: alias, entityName: entity.name, isAlias: true });
     }
     return terms;
 }
 /**
- * Common words to exclude from wikilink matching.
- * These words are never wikified even when they match entity names or aliases.
+ * Base set of common words to exclude from wikilink matching.
+ * Extended by IMPLICIT_EXCLUDE_WORDS to form the full EXCLUDE_WORDS set.
  */
-const EXCLUDE_WORDS = new Set([
+const EXCLUDE_WORDS_BASE = new Set([
     // Day names
     'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
     // Month names
@@ -227,7 +228,31 @@ const EXCLUDE_WORDS = new Set([
     'view', 'village', 'voice', 'volume', 'wall', 'war', 'waste', 'water',
     'wave', 'way', 'weather', 'weight', 'west', 'wind', 'window',
     'winter', 'wood', 'word', 'worker', 'world', 'writing',
+    // Nationalities / demonyms
+    'american', 'british', 'french', 'german', 'chinese', 'japanese',
+    'indian', 'russian', 'australian', 'canadian', 'italian', 'spanish',
+    'dutch', 'swiss', 'irish', 'scottish', 'welsh', 'english',
+    'european', 'african', 'asian', 'brazilian', 'mexican', 'korean',
+    'turkish', 'polish', 'swedish', 'norwegian', 'danish', 'finnish',
+    // Multi-word production false positives
+    'front door', 'back door', 'side door',
 ]);
+/**
+ * Unified EXCLUDE_WORDS: base set (300+) merged with IMPLICIT_EXCLUDE_WORDS (1100+).
+ * This ensures shouldExcludeEntity() checks all 1200+ common English words,
+ * not just the smaller base set. Fixes words like "phase", "tier", "recall"
+ * that were in IMPLICIT but not in the explicit matching path.
+ *
+ * Note: IMPLICIT_EXCLUDE_WORDS is defined later in this file.
+ * We use a lazy getter to avoid forward-reference issues.
+ */
+let _mergedExcludeWords = null;
+function getMergedExcludeWords() {
+    if (!_mergedExcludeWords) {
+        _mergedExcludeWords = new Set([...EXCLUDE_WORDS_BASE, ...IMPLICIT_EXCLUDE_WORDS]);
+    }
+    return _mergedExcludeWords;
+}
 /**
  * Escape special regex characters in a string
  */
@@ -237,14 +262,18 @@ function escapeRegex(str) {
 /**
  * Check if an entity should be excluded from wikilikning
  */
-function shouldExcludeEntity(entity) {
+function shouldExcludeEntity(entity, isAlias = false) {
     // Skip single-char terms (e.g. alias "I" for Ben)
     if (entity.length < 2)
         return true;
-    if (EXCLUDE_WORDS.has(entity.toLowerCase()))
+    if (getMergedExcludeWords().has(entity.toLowerCase()))
         return true;
     // Skip lowercase hyphenated descriptors (e.g., self-improving, local-first, Claude-native)
     if (entity.includes('-') && entity === entity.toLowerCase())
+        return true;
+    // Short aliases (≤3 chars) must be ALL-UPPERCASE to survive (e.g., "CI", "ML" ok, "api", "tF" blocked)
+    // Entity names like "Ben" (3 chars, mixed case) are unaffected since isAlias=false for names.
+    if (isAlias && entity.length <= 3 && entity !== entity.toUpperCase())
         return true;
     return false;
 }
@@ -290,13 +319,34 @@ export function applyWikilinks(content, entities, options = {}) {
             linkedEntities: [],
         };
     }
+    // Detect ambiguous aliases — aliases claimed by multiple entities
+    // Skip these to avoid wrong entity resolution (same pattern as resolveAliasWikilinks)
+    const aliasCounts = new Map();
+    for (const entity of entities) {
+        if (typeof entity === 'string')
+            continue;
+        for (const alias of entity.aliases) {
+            const key = alias.toLowerCase();
+            const owners = aliasCounts.get(key) ?? new Set();
+            owners.add(entity.name);
+            aliasCounts.set(key, owners);
+        }
+    }
+    const ambiguousAliases = new Set();
+    for (const [key, owners] of aliasCounts) {
+        if (owners.size > 1)
+            ambiguousAliases.add(key);
+    }
     // Build search terms from all entities (names + aliases)
     // Each term maps back to its canonical entity name
     const allSearchTerms = [];
     for (const entity of entities) {
         const terms = getSearchTerms(entity);
         for (const t of terms) {
-            if (!shouldExcludeEntity(t.term)) {
+            // Skip ambiguous aliases (shared by multiple entities)
+            if (t.isAlias && ambiguousAliases.has(t.term.toLowerCase()))
+                continue;
+            if (!shouldExcludeEntity(t.term, t.isAlias)) {
                 allSearchTerms.push(t);
             }
         }
@@ -314,10 +364,12 @@ export function applyWikilinks(content, entities, options = {}) {
         // Also need to handle overlapping matches between different entities
         // First, collect ALL valid matches for each entity (name + aliases combined)
         const entityAllMatches = new Map();
-        for (const { term, entityName } of allSearchTerms) {
+        for (const { term, entityName, isAlias } of allSearchTerms) {
             const entityKey = entityName.toLowerCase();
-            // Find all matches of the search term
-            const matches = findEntityMatches(result, term, caseInsensitive);
+            // Short uppercase aliases (≤4 chars, all-caps) match case-sensitively
+            // so "CI" matches "CI" but not "ci" or "Ci"
+            const useCaseInsensitive = !(isAlias && term.length <= 4 && term === term.toUpperCase());
+            const matches = findEntityMatches(result, term, useCaseInsensitive ? caseInsensitive : false);
             // Filter out matches in protected zones
             const validMatches = matches.filter(match => !rangeOverlapsProtectedZone(match.start, match.end, zones));
             if (validMatches.length === 0) {
@@ -406,6 +458,63 @@ export function applyWikilinks(content, entities, options = {}) {
                 linkedEntities.push(entityName);
             }
         }
+        // Stemmed matching pass: for single-word entities (≥4 chars) that didn't match
+        // exactly, find content words with the same Porter stem and link them.
+        // This eliminates the need for explicit morphological aliases
+        // (e.g., Pipelines matches "Pipeline", Sprint matches "Sprinting").
+        for (const entity of entities) {
+            if (typeof entity === 'string')
+                continue;
+            const entityName = entity.name;
+            if (selectedEntityNames.has(entityName.toLowerCase()))
+                continue;
+            // Only single-word entities ≥4 chars — multi-word needs exact matching
+            if (entityName.includes(' ') || entityName.length < 4)
+                continue;
+            if (shouldExcludeEntity(entityName))
+                continue;
+            const entityStem = stem(entityName);
+            // Find word-boundary matches in content for words with same stem
+            const wordPattern = /\b[A-Za-z]{4,}\b/g;
+            let wordMatch;
+            let bestStemMatch = null;
+            while ((wordMatch = wordPattern.exec(result)) !== null) {
+                const word = wordMatch[0];
+                if (stem(word) !== entityStem)
+                    continue;
+                // Skip if same as entity name (already tried in exact pass)
+                if (word.toLowerCase() === entityName.toLowerCase())
+                    continue;
+                const start = wordMatch.index;
+                const end = start + word.length;
+                // Must not be in a protected zone
+                if (rangeOverlapsProtectedZone(start, end, zones))
+                    continue;
+                // Check bracket chars
+                const charBefore = start > 0 ? result[start - 1] : '';
+                const charAfter = end < result.length ? result[end] : '';
+                if ('()[]{}'.includes(charBefore) || '()[]{}'.includes(charAfter))
+                    continue;
+                bestStemMatch = { start, end, matched: word };
+                break; // First occurrence only
+            }
+            if (bestStemMatch) {
+                const wikilink = `[[${entityName}|${bestStemMatch.matched}]]`;
+                result = result.slice(0, bestStemMatch.start) + wikilink + result.slice(bestStemMatch.end);
+                const shift = wikilink.length - bestStemMatch.matched.length;
+                zones = zones.map(zone => ({
+                    ...zone,
+                    start: zone.start <= bestStemMatch.start ? zone.start : zone.start + shift,
+                    end: zone.end <= bestStemMatch.start ? zone.end : zone.end + shift,
+                }));
+                zones.push({ start: bestStemMatch.start, end: bestStemMatch.start + wikilink.length, type: 'wikilink' });
+                zones.sort((a, b) => a.start - b.start);
+                linksAdded++;
+                if (!linkedEntities.includes(entityName)) {
+                    linkedEntities.push(entityName);
+                }
+            }
+        }
     }
     else {
         // For all occurrences mode, process each term
@@ -473,7 +582,7 @@ export function suggestWikilinks(content, entities, options = {}) {
     for (const entity of entities) {
         const terms = getSearchTerms(entity);
         for (const t of terms) {
-            if (!shouldExcludeEntity(t.term)) {
+            if (!shouldExcludeEntity(t.term, t.isAlias)) {
                 allSearchTerms.push(t);
             }
         }
@@ -486,9 +595,10 @@ export function suggestWikilinks(content, entities, options = {}) {
         // For firstOccurrenceOnly mode, find the earliest match across all terms
         // for each entity, similar to applyWikilinks behavior
         const entityAllMatches = new Map();
-        for (const { term, entityName } of allSearchTerms) {
+        for (const { term, entityName, isAlias } of allSearchTerms) {
             const entityKey = entityName.toLowerCase();
-            const matches = findEntityMatches(content, term, caseInsensitive);
+            const useCaseInsensitive = !(isAlias && term.length <= 4 && term === term.toUpperCase());
+            const matches = findEntityMatches(content, term, useCaseInsensitive ? caseInsensitive : false);
             // Filter out matches in protected zones
             const validMatches = matches.filter(match => !rangeOverlapsProtectedZone(match.start, match.end, zones));
             if (validMatches.length === 0)

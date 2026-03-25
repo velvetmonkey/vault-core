@@ -5,6 +5,8 @@
  * Used by both Flywheel (read) and Flywheel Memory (write).
  */
 export type { EntityIndex, EntityCategory, EntityWithAliases, Entity, EntityWithType, ScanOptions, WikilinkOptions, WikilinkResult, ImplicitEntityConfig, ExtendedWikilinkOptions, ImplicitEntityMatch, ResolveAliasOptions, ProtectedZone, ProtectedZoneType, } from './types.js';
+export { COMMON_ENGLISH_WORDS } from './common-words.js';
+export { stem } from './stemmer.js';
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
 export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
 export { getProtectedZones, getProtectedZonesRegex, isInProtectedZone, mergeOverlappingZones, rangeOverlapsProtectedZone, } from './protectedZones.js';

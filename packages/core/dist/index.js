@@ -4,6 +4,10 @@
  * Shared vault utilities for the Flywheel ecosystem.
  * Used by both Flywheel (read) and Flywheel Memory (write).
  */
+// Common English words (frequency list for alias filtering)
+export { COMMON_ENGLISH_WORDS } from './common-words.js';
+// Porter Stemmer (for morphological entity matching)
+export { stem } from './stemmer.js';
 // Entity scanning
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
 // Wikilinks

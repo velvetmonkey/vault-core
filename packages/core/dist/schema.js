@@ -8,7 +8,7 @@
 // Constants
 // =============================================================================
 /** Current schema version - bump when schema changes */
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 /** State database filename */
 export const STATE_DB_FILENAME = 'state.db';
 /** Directory for flywheel state */
@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS wikilink_feedback (
   note_path TEXT NOT NULL,
   correct INTEGER NOT NULL,
   confidence REAL NOT NULL DEFAULT 1.0,
+  matched_term TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_wl_feedback_entity ON wikilink_feedback(entity);
@@ -170,6 +171,7 @@ CREATE TABLE IF NOT EXISTS wikilink_applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity TEXT NOT NULL,
   note_path TEXT NOT NULL,
+  matched_term TEXT,
   applied_at TEXT DEFAULT (datetime('now')),
   status TEXT DEFAULT 'applied'
 );
