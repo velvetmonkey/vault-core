@@ -1,6 +1,6 @@
 {
   "name": "@velvetmonkey/vault-core",
-  "version": "2.0.143",
+  "version": "2.0.144",
   "description": "Shared vault utilities for Flywheel ecosystem (entity scanning, wikilinks, protected zones)",
   "type": "module",
   "main": "dist/index.js",
@@ -59,6 +59,7 @@
   "license": "AGPL-3.0-only",
   "files": [
     "dist",
+    "data",
     "!dist/**/*.js.map",
     "!dist/**/*.d.ts.map",
     "README.md"
