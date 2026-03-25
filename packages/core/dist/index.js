@@ -24,5 +24,11 @@ recordMergeDismissal, getDismissedMergePairs,
 // Vault Index Cache
 saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitiesFts, 
 // Content Hashes
-loadContentHashes, saveContentHashBatch, renameContentHash, SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
+loadContentHashes, saveContentHashBatch, renameContentHash, 
+// Database file management
+deleteStateDbFiles, backupStateDb, preserveCorruptedDb, 
+// Backup & Recovery
+BACKUP_ROTATION_COUNT, SALVAGE_TABLES, rotateBackupFiles, safeBackupAsync, checkDbIntegrity, salvageFeedbackTables, attemptSalvage, 
+// Constants
+SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, } from './sqlite.js';
 //# sourceMappingURL=index.js.map

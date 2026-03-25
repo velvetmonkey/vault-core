@@ -15,10 +15,12 @@ import * as fs from 'fs';
 export { SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, SCHEMA_SQL } from './schema.js';
 // Re-export migrations
 export { getStateDbPath, initSchema, deleteStateDbFiles, backupStateDb, preserveCorruptedDb } from './migrations.js';
+// Re-export backup & recovery
+export { BACKUP_ROTATION_COUNT, SALVAGE_TABLES, rotateBackupFiles, safeBackupAsync, checkDbIntegrity, salvageFeedbackTables, attemptSalvage, } from './migrations.js';
 // Re-export all query functions
 export { searchEntities, searchEntitiesPrefix, getEntityByName, getAllEntitiesFromDb, getEntityIndexFromDb, getEntitiesByAlias, recordEntityMention, getEntityRecency, getAllRecency, setWriteState, getWriteState, deleteWriteState, setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, deleteFlywheelConfig, saveFlywheelConfigToDb, loadFlywheelConfigFromDb, recordMergeDismissal, getDismissedMergePairs, getStateDbMetadata, isEntityDataStale, escapeFts5Query, rebuildEntitiesFts, stateDbExists, deleteStateDb, saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, clearVaultIndexCache, isVaultIndexCacheValid, loadContentHashes, saveContentHashBatch, renameContentHash, } from './queries.js';
 // Import for use in openStateDb
-import { getStateDbPath, initSchema, deleteStateDbFiles, backupStateDb, preserveCorruptedDb } from './migrations.js';
+import { getStateDbPath, initSchema, deleteStateDbFiles, preserveCorruptedDb, attemptSalvage } from './migrations.js';
 // =============================================================================
 // Factory
 // =============================================================================
@@ -30,8 +32,9 @@ import { getStateDbPath, initSchema, deleteStateDbFiles, backupStateDb, preserve
  */
 export function openStateDb(vaultPath) {
     const dbPath = getStateDbPath(vaultPath);
-    // Back up existing database before any mutations
-    backupStateDb(dbPath);
+    // Note: safe backup with rotation is done AFTER open + integrity check
+    // by the caller (initializeVault), not here. This avoids overwriting
+    // good backups with a corrupt DB before we've verified it.
     // Guard: Delete corrupted 0-byte database files
     // This can happen when better-sqlite3 fails to compile (e.g., Node 24)
     // and creates an empty file instead of a valid SQLite database
@@ -42,10 +45,15 @@ export function openStateDb(vaultPath) {
             deleteStateDbFiles(dbPath);
         }
     }
+    const isNewDb = !fs.existsSync(dbPath);
     let db;
     try {
         db = new Database(dbPath);
         initSchema(db);
+        // If we just created a fresh DB but backup files exist, salvage from them
+        if (isNewDb) {
+            attemptSalvage(db, dbPath);
+        }
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -61,6 +69,8 @@ export function openStateDb(vaultPath) {
             deleteStateDbFiles(dbPath);
             db = new Database(dbPath);
             initSchema(db);
+            // Try to recover feedback data from backups or the corrupt file
+            attemptSalvage(db, dbPath);
         }
         else {
             // Recoverable error (constraint violation, migration issue, etc.) — don't destroy the DB

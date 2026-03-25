@@ -14,6 +14,7 @@ import type { Statement, Transaction } from 'better-sqlite3';
 import type { EntityCategory, EntityWithAliases, EntityIndex } from './types.js';
 export { SCHEMA_VERSION, STATE_DB_FILENAME, FLYWHEEL_DIR, SCHEMA_SQL } from './schema.js';
 export { getStateDbPath, initSchema, deleteStateDbFiles, backupStateDb, preserveCorruptedDb } from './migrations.js';
+export { BACKUP_ROTATION_COUNT, SALVAGE_TABLES, rotateBackupFiles, safeBackupAsync, checkDbIntegrity, salvageFeedbackTables, attemptSalvage, } from './migrations.js';
 export { searchEntities, searchEntitiesPrefix, getEntityByName, getAllEntitiesFromDb, getEntityIndexFromDb, getEntitiesByAlias, recordEntityMention, getEntityRecency, getAllRecency, setWriteState, getWriteState, deleteWriteState, setFlywheelConfig, getFlywheelConfig, getAllFlywheelConfig, deleteFlywheelConfig, saveFlywheelConfigToDb, loadFlywheelConfigFromDb, recordMergeDismissal, getDismissedMergePairs, getStateDbMetadata, isEntityDataStale, escapeFts5Query, rebuildEntitiesFts, stateDbExists, deleteStateDb, saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, clearVaultIndexCache, isVaultIndexCacheValid, loadContentHashes, saveContentHashBatch, renameContentHash, } from './queries.js';
 export type { FlywheelConfigRow, VaultIndexCacheData, VaultIndexCacheInfo } from './queries.js';
 /** Search result from FTS5 entity search */
