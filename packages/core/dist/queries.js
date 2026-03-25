@@ -322,20 +322,37 @@ export function isEntityDataStale(stateDb, thresholdMs = 60 * 60 * 1000 // 1 hou
 // Utility Functions
 // =============================================================================
 /**
- * Escape special FTS5 characters in a query
+ * Escape special FTS5 characters and convert to OR-joined query.
+ * BM25 ranking naturally scores documents with more matching terms higher,
+ * so OR semantics gives AND-like results at the top while surfacing partial matches.
+ * Preserves quoted phrases as exact matches and * for prefix matching.
  */
 export function escapeFts5Query(query) {
-    // Handle empty query
     if (!query || !query.trim()) {
         return '';
     }
-    // Remove or escape FTS5 special characters
-    // Keep * for prefix matching, escape others
-    return query
-        .replace(/"/g, '""') // Escape quotes
-        .replace(/[(){}[\]^~:-]/g, ' ') // Remove special operators including hyphen
-        .replace(/\s+/g, ' ') // Normalize whitespace
+    // Extract quoted phrases first (preserve as AND-joined phrase matches)
+    const phrases = [];
+    const withoutPhrases = query.replace(/"([^"]+)"/g, (_, phrase) => {
+        phrases.push(`"${phrase.replace(/"/g, '""')}"`);
+        return '';
+    });
+    // Clean remaining tokens
+    const cleaned = withoutPhrases
+        .replace(/[(){}[\]^~:-]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
+    // Split into tokens, skip explicit AND/OR/NOT operators
+    const tokens = cleaned.split(' ').filter(t => t && t !== 'AND' && t !== 'OR' && t !== 'NOT');
+    // Combine: quoted phrases + OR-joined tokens
+    const parts = [...phrases];
+    if (tokens.length === 1) {
+        parts.push(tokens[0]);
+    }
+    else if (tokens.length > 1) {
+        parts.push(tokens.join(' OR '));
+    }
+    return parts.join(' ') || '';
 }
 /**
  * Rebuild the entities_fts index from the entities table.

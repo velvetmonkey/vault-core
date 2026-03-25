@@ -115,7 +115,10 @@ export declare function getStateDbMetadata(stateDb: StateDb): StateDbMetadata;
  */
 export declare function isEntityDataStale(stateDb: StateDb, thresholdMs?: number): boolean;
 /**
- * Escape special FTS5 characters in a query
+ * Escape special FTS5 characters and convert to OR-joined query.
+ * BM25 ranking naturally scores documents with more matching terms higher,
+ * so OR semantics gives AND-like results at the top while surfacing partial matches.
+ * Preserves quoted phrases as exact matches and * for prefix matching.
  */
 export declare function escapeFts5Query(query: string): string;
 /**
