@@ -48,9 +48,10 @@ export function openStateDb(vaultPath) {
         initSchema(db);
     }
     catch (err) {
-        // Corrupted database (e.g., "file is not a database") — preserve, delete, and retry once
-        if (fs.existsSync(dbPath)) {
-            const msg = err instanceof Error ? err.message : String(err);
+        const msg = err instanceof Error ? err.message : String(err);
+        // Only nuke-and-rebuild for actual SQLite corruption, not recoverable errors
+        const isActualCorruption = /file is not a database|disk image is malformed|database or disk is full/i.test(msg);
+        if (isActualCorruption && fs.existsSync(dbPath)) {
             console.error(`[vault-core] Corrupted state.db (${msg}) — deleting and recreating`);
             preserveCorruptedDb(dbPath);
             try {
@@ -62,6 +63,8 @@ export function openStateDb(vaultPath) {
             initSchema(db);
         }
         else {
+            // Recoverable error (constraint violation, migration issue, etc.) — don't destroy the DB
+            console.error(`[vault-core] state.db error (${msg}) — NOT deleting (recoverable)`);
             throw err;
         }
     }

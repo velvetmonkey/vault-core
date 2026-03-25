@@ -162,6 +162,122 @@ export function initSchema(db) {
                 db.exec('ALTER TABLE tool_invocations ADD COLUMN baseline_tokens INTEGER');
             }
         }
+        // v32: Drop composite PRIMARY KEY on entity_changes (was causing UNIQUE constraint
+        // crashes when two changes hit the same entity+field within one second).
+        // Recreate as rowid table — audit log doesn't need dedup.
+        if (currentVersion < 32) {
+            const hasTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='entity_changes'`).get();
+            if (hasTable) {
+                db.exec(`
+          CREATE TABLE IF NOT EXISTS entity_changes_new (
+            entity TEXT NOT NULL,
+            field TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          INSERT INTO entity_changes_new SELECT entity, field, old_value, new_value, changed_at FROM entity_changes;
+          DROP TABLE entity_changes;
+          ALTER TABLE entity_changes_new RENAME TO entity_changes;
+        `);
+            }
+        }
+        // v33: performance_benchmarks table (longitudinal tracking)
+        if (currentVersion < 33) {
+            const hasTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='performance_benchmarks'").get();
+            if (!hasTable) {
+                db.exec(`
+          CREATE TABLE performance_benchmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            version TEXT NOT NULL,
+            benchmark TEXT NOT NULL,
+            mean_ms REAL NOT NULL,
+            p50_ms REAL,
+            p95_ms REAL,
+            iterations INTEGER NOT NULL DEFAULT 1
+          );
+          CREATE INDEX idx_perf_bench_ts ON performance_benchmarks(timestamp);
+          CREATE INDEX idx_perf_bench_name ON performance_benchmarks(benchmark, timestamp);
+        `);
+            }
+            db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(33);
+        }
+        // v34: Fix entities_fts — switch from content='entities' to contentless
+        // The old FTS5 declared content='entities' with column 'aliases', but the entities
+        // table has 'aliases_json'. This caused "no such column: T.aliases" on every query.
+        // Contentless FTS5 eliminates the column name dependency; triggers handle sync.
+        if (currentVersion < 34) {
+            // Drop old FTS5 and shadow tables
+            db.exec(`DROP TABLE IF EXISTS entities_fts`);
+            db.exec(`DROP TABLE IF EXISTS entities_fts_data`);
+            db.exec(`DROP TABLE IF EXISTS entities_fts_idx`);
+            db.exec(`DROP TABLE IF EXISTS entities_fts_docsize`);
+            db.exec(`DROP TABLE IF EXISTS entities_fts_config`);
+            // Recreate as contentless
+            db.exec(`
+        CREATE VIRTUAL TABLE entities_fts USING fts5(
+          name, aliases, category,
+          content='',
+          tokenize='porter unicode61'
+        )
+      `);
+            // Drop and recreate triggers (unchanged logic, now targeting contentless table)
+            db.exec(`DROP TRIGGER IF EXISTS entities_ai`);
+            db.exec(`DROP TRIGGER IF EXISTS entities_ad`);
+            db.exec(`DROP TRIGGER IF EXISTS entities_au`);
+            db.exec(`
+        CREATE TRIGGER entities_ai AFTER INSERT ON entities BEGIN
+          INSERT INTO entities_fts(rowid, name, aliases, category)
+          VALUES (
+            new.id,
+            new.name,
+            COALESCE((SELECT group_concat(value, ' ') FROM json_each(new.aliases_json)), ''),
+            new.category
+          );
+        END
+      `);
+            db.exec(`
+        CREATE TRIGGER entities_ad AFTER DELETE ON entities BEGIN
+          INSERT INTO entities_fts(entities_fts, rowid, name, aliases, category)
+          VALUES (
+            'delete',
+            old.id,
+            old.name,
+            COALESCE((SELECT group_concat(value, ' ') FROM json_each(old.aliases_json)), ''),
+            old.category
+          );
+        END
+      `);
+            db.exec(`
+        CREATE TRIGGER entities_au AFTER UPDATE ON entities BEGIN
+          INSERT INTO entities_fts(entities_fts, rowid, name, aliases, category)
+          VALUES (
+            'delete',
+            old.id,
+            old.name,
+            COALESCE((SELECT group_concat(value, ' ') FROM json_each(old.aliases_json)), ''),
+            old.category
+          );
+          INSERT INTO entities_fts(rowid, name, aliases, category)
+          VALUES (
+            new.id,
+            new.name,
+            COALESCE((SELECT group_concat(value, ' ') FROM json_each(new.aliases_json)), ''),
+            new.category
+          );
+        END
+      `);
+            // Populate FTS from existing entities
+            db.exec(`
+        INSERT INTO entities_fts(rowid, name, aliases, category)
+        SELECT id, name,
+          COALESCE((SELECT group_concat(value, ' ') FROM json_each(aliases_json)), ''),
+          category
+        FROM entities
+      `);
+            db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(34);
+        }
         db.prepare('INSERT OR IGNORE INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     }
 }
