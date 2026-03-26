@@ -4,6 +4,8 @@
  * Shared vault utilities for the Flywheel ecosystem.
  * Used by both Flywheel (read) and Flywheel Memory (write).
  */
+// Type helpers and constants
+export { DEFAULT_ENTITY_CATEGORIES, getIndexCategory, ensureIndexCategory, } from './types.js';
 // Common English words (frequency list for alias filtering)
 export { COMMON_ENGLISH_WORDS } from './common-words.js';
 // Porter Stemmer (for morphological entity matching)

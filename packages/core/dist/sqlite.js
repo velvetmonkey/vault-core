@@ -193,13 +193,8 @@ export function openStateDb(vaultPath) {
         replaceAllEntities: db.transaction((index) => {
             // Clear existing entities
             stateDb.clearEntities.run();
-            // Insert all entities by category
-            const categories = [
-                'technologies', 'acronyms', 'people', 'projects',
-                'organizations', 'locations', 'concepts', 'animals',
-                'media', 'events', 'documents', 'vehicles', 'health',
-                'finance', 'food', 'hobbies', 'other',
-            ];
+            // Insert all entities by category (including custom categories)
+            const categories = Object.keys(index).filter(k => k !== '_metadata');
             let total = 0;
             for (const category of categories) {
                 const entities = index[category];

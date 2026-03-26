@@ -122,6 +122,10 @@ export function getEntityIndexFromDb(stateDb) {
             hubScore: entity.hubScore,
             description: entity.description,
         };
+        // Initialize custom category array if needed
+        if (!index[entity.category]) {
+            index[entity.category] = [];
+        }
         index[entity.category].push(entityObj);
     }
     return index;

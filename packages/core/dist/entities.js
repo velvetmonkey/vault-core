@@ -248,8 +248,12 @@ const FRONTMATTER_TYPE_MAP = {
     country: 'locations', region: 'locations',
     concept: 'concepts', idea: 'concepts', topic: 'concepts',
 };
-function mapFrontmatterType(type) {
-    return FRONTMATTER_TYPE_MAP[type.toLowerCase()];
+function mapFrontmatterType(type, customCategories) {
+    const lower = type.toLowerCase();
+    // Custom categories take priority — frontmatter type becomes the category name
+    if (customCategories?.[lower])
+        return lower;
+    return FRONTMATTER_TYPE_MAP[lower];
 }
 /**
  * Categorize an entity based on its name and optional frontmatter type
@@ -296,10 +300,10 @@ const FOLDER_CATEGORY_MAP = {
     'finance': 'finance',
     'hobbies': 'hobbies',
 };
-function categorizeEntity(name, techKeywords, frontmatterType, notePath) {
-    // 0. Frontmatter type takes priority
+function categorizeEntity(name, techKeywords, frontmatterType, notePath, customCategories) {
+    // 0. Frontmatter type takes priority (custom categories checked first)
     if (frontmatterType) {
-        const mapped = mapFrontmatterType(frontmatterType);
+        const mapped = mapFrontmatterType(frontmatterType, customCategories);
         if (mapped)
             return mapped;
     }
@@ -442,6 +446,7 @@ async function scanDirectory(dirPath, basePath, excludeFolders) {
 export async function scanVaultEntities(vaultPath, options = {}) {
     const excludeFolders = options.excludeFolders ?? [];
     const techKeywords = options.techKeywords ?? DEFAULT_TECH_KEYWORDS;
+    const customCategories = options.customCategories;
     // Scan vault for all markdown files
     const allEntities = await scanDirectory(vaultPath, vaultPath, excludeFolders);
     // Filter out periodic notes, invalid entries, and stop-listed entities
@@ -494,7 +499,7 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         },
     };
     for (const entity of uniqueEntities) {
-        const category = categorizeEntity(entity.name, techKeywords, entity.frontmatterType, entity.relativePath);
+        const category = categorizeEntity(entity.name, techKeywords, entity.frontmatterType, entity.relativePath, customCategories);
         // Store as EntityWithAliases object
         const entityObj = {
             name: entity.name,
@@ -502,41 +507,40 @@ export async function scanVaultEntities(vaultPath, options = {}) {
             aliases: entity.aliases,
             description: entity.description,
         };
+        // Initialize custom category array if needed
+        if (!index[category]) {
+            index[category] = [];
+        }
         index[category].push(entityObj);
     }
-    // Sort each category by name
+    // Sort each category by name (including custom categories)
     const sortByName = (a, b) => {
         const nameA = typeof a === 'string' ? a : a.name;
         const nameB = typeof b === 'string' ? b : b.name;
         return nameA.localeCompare(nameB);
     };
-    const allCategories = [
-        'technologies', 'acronyms', 'people', 'projects', 'organizations',
-        'locations', 'concepts', 'animals', 'media', 'events', 'documents',
-        'vehicles', 'health', 'finance', 'food', 'hobbies', 'other',
-    ];
-    for (const cat of allCategories) {
+    const allCategoryKeys = Object.keys(index).filter(k => k !== '_metadata');
+    for (const cat of allCategoryKeys) {
         index[cat].sort(sortByName);
     }
     // Update metadata
-    index._metadata.total_entities = allCategories.reduce((sum, cat) => sum + index[cat].length, 0);
+    index._metadata.total_entities = allCategoryKeys.reduce((sum, cat) => sum + index[cat].length, 0);
     return index;
 }
 /**
  * Get all entities as a flat array (for wikilink matching)
  * Handles both legacy string format and new EntityWithAliases format
  */
-/** All entity category keys (excludes _metadata) */
-const ALL_ENTITY_CATEGORIES = [
-    'technologies', 'acronyms', 'people', 'projects', 'organizations',
-    'locations', 'concepts', 'animals', 'media', 'events', 'documents',
-    'vehicles', 'health', 'finance', 'food', 'hobbies', 'periodical', 'other',
-];
+/** Get all category keys from an index (includes custom categories, excludes _metadata) */
+function getIndexCategories(index) {
+    return Object.keys(index).filter(k => k !== '_metadata');
+}
 export function getAllEntities(index) {
     const result = [];
-    for (const cat of ALL_ENTITY_CATEGORIES) {
-        if (index[cat])
-            result.push(...index[cat]);
+    for (const cat of getIndexCategories(index)) {
+        const entities = index[cat];
+        if (Array.isArray(entities))
+            result.push(...entities);
     }
     return result;
 }
@@ -552,8 +556,7 @@ export function getAllEntities(index) {
  */
 export function getAllEntitiesWithTypes(index) {
     const result = [];
-    const categories = ALL_ENTITY_CATEGORIES;
-    for (const category of categories) {
+    for (const category of getIndexCategories(index)) {
         const entities = index[category];
         // Skip undefined or empty categories
         if (!entities || !Array.isArray(entities)) {

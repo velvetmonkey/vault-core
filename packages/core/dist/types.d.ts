@@ -2,9 +2,15 @@
  * Types for vault-core shared utilities
  */
 /**
- * Categories for entity classification
+ * Built-in entity categories
  */
-export type EntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'animals' | 'media' | 'events' | 'documents' | 'vehicles' | 'health' | 'finance' | 'food' | 'hobbies' | 'periodical' | 'other';
+export type DefaultEntityCategory = 'technologies' | 'acronyms' | 'people' | 'projects' | 'organizations' | 'locations' | 'concepts' | 'animals' | 'media' | 'events' | 'documents' | 'vehicles' | 'health' | 'finance' | 'food' | 'hobbies' | 'periodical' | 'other';
+/**
+ * Entity category — built-in defaults + user-defined custom categories.
+ * Custom categories are configured via FlywheelConfig.custom_categories
+ * and populated from frontmatter `type:` fields.
+ */
+export type EntityCategory = DefaultEntityCategory | (string & Record<never, never>);
 /**
  * Entity with optional aliases from frontmatter
  */
@@ -32,9 +38,11 @@ export interface EntityWithType {
     entity: EntityWithAliases;
     category: EntityCategory;
 }
+/** Built-in category keys (excludes _metadata) */
+export declare const DEFAULT_ENTITY_CATEGORIES: DefaultEntityCategory[];
 /**
- * Entity index structure matching wikilink-cache.py output
- * Now supports both string[] (legacy) and EntityWithAliases[] (v2)
+ * Entity index structure — built-in categories as typed properties,
+ * custom categories accessed dynamically via getIndexCategory().
  */
 export interface EntityIndex {
     technologies: Entity[];
@@ -55,6 +63,8 @@ export interface EntityIndex {
     hobbies: Entity[];
     periodical: Entity[];
     other: Entity[];
+    /** Dynamic custom categories */
+    [customCategory: string]: Entity[] | EntityIndex['_metadata'];
     _metadata: {
         total_entities: number;
         generated_at: string;
@@ -64,6 +74,10 @@ export interface EntityIndex {
         version?: number;
     };
 }
+/** Get entities for a category (handles both built-in and custom) */
+export declare function getIndexCategory(index: EntityIndex, category: string): Entity[];
+/** Ensure a category array exists on the index */
+export declare function ensureIndexCategory(index: EntityIndex, category: string): void;
 /**
  * A protected zone in content where wikilinks should not be applied
  */
@@ -88,6 +102,14 @@ export interface ScanOptions {
      * Tech keywords for categorization
      */
     techKeywords?: string[];
+    /**
+     * Custom entity categories from FlywheelConfig.
+     * Keys are frontmatter `type:` values; entities with matching types
+     * get that key as their category instead of the default classifier.
+     */
+    customCategories?: Record<string, {
+        type_boost?: number;
+    }>;
 }
 /**
  * Options for wikilink application

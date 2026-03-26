@@ -4,7 +4,8 @@
  * Shared vault utilities for the Flywheel ecosystem.
  * Used by both Flywheel (read) and Flywheel Memory (write).
  */
-export type { EntityIndex, EntityCategory, EntityWithAliases, Entity, EntityWithType, ScanOptions, WikilinkOptions, WikilinkResult, ImplicitEntityConfig, ExtendedWikilinkOptions, ImplicitEntityMatch, ResolveAliasOptions, ProtectedZone, ProtectedZoneType, } from './types.js';
+export type { EntityIndex, EntityCategory, DefaultEntityCategory, EntityWithAliases, Entity, EntityWithType, ScanOptions, WikilinkOptions, WikilinkResult, ImplicitEntityConfig, ExtendedWikilinkOptions, ImplicitEntityMatch, ResolveAliasOptions, ProtectedZone, ProtectedZoneType, } from './types.js';
+export { DEFAULT_ENTITY_CATEGORIES, getIndexCategory, ensureIndexCategory, } from './types.js';
 export { COMMON_ENGLISH_WORDS } from './common-words.js';
 export { stem } from './stemmer.js';
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
