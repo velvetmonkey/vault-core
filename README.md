@@ -12,7 +12,7 @@
 
 ## Verified Capabilities
 
-- **100k Note Scale** -- Vault generation and [[Benchmark|benchmarking]] tested at 100,000 notes
+- **100k Note Scale** -- Vault generation and benchmarking tested at 100,000 notes
 - **Iteration Stress** -- 10,000+ sequential operations without corruption
 - **Cross-Platform** -- Tested on Ubuntu, Windows, macOS (Intel + ARM)
 - **Entity Detection** -- 18 entity categories, Porter stemmer + Adamic-Adar scoring for wikilink inference
@@ -189,7 +189,7 @@ await logger.wrap('search_notes', async () => {
 
 ## flywheel-bench Package
 
-Testing infrastructure for the [[Flywheel]] ecosystem.
+Testing infrastructure for the Flywheel ecosystem.
 
 ### Vault Generation
 
