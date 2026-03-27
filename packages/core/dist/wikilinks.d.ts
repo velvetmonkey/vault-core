@@ -53,8 +53,7 @@ export declare function suggestWikilinks(content: string, entities: Entity[], op
  */
 export declare function resolveAliasWikilinks(content: string, entities: Entity[], options?: ResolveAliasOptions): WikilinkResult;
 /**
- * Backward-compat alias: IMPLICIT_EXCLUDE_WORDS now points to COMMON_ENGLISH_WORDS.
- * Consumed by flywheel-memory (tools/read/wikilinks.ts, core/write/wikilinks.ts).
+ * Common words that should not be detected as implicit entities
  */
 export declare const IMPLICIT_EXCLUDE_WORDS: Set<string>;
 /**

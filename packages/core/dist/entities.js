@@ -47,6 +47,27 @@ const DEFAULT_EXCLUDE_PATTERNS = [
     /^[a-z0-9_-]+\.[a-z]+$/i, // File names with extensions
 ];
 /**
+ * Default tech keywords for categorization
+ */
+const DEFAULT_TECH_KEYWORDS = [
+    // Core technologies (28 original)
+    'databricks', 'api', 'code', 'azure', 'sql', 'git',
+    'node', 'react', 'powerbi', 'excel', 'copilot',
+    'fabric', 'apim', 'endpoint', 'synology', 'tailscale',
+    'obsidian', 'claude', 'powershell', 'mcp', 'typescript',
+    'javascript', 'python', 'docker', 'kubernetes',
+    'adf', 'adb', 'net', 'aws', 'gcp', 'terraform',
+    // AI/ML (16 new - target audience)
+    'chatgpt', 'langchain', 'openai', 'huggingface', 'pytorch', 'tensorflow',
+    'anthropic', 'llm', 'embedding', 'vector', 'rag', 'prompt', 'agent',
+    'transformer', 'ollama', 'gemini',
+    // Languages (10 new)
+    'swift', 'kotlin', 'rust', 'golang', 'elixir', 'scala', 'julia',
+    'ruby', 'php', 'csharp',
+    // Infrastructure (8 new)
+    'ansible', 'nginx', 'redis', 'postgres', 'mongodb', 'graphql', 'grpc', 'kafka',
+];
+/**
  * Check if an alias passes the length and word count filters
  * Uses same rules as entity names: ≤25 chars, ≤3 words
  */
@@ -279,7 +300,7 @@ const FOLDER_CATEGORY_MAP = {
     'finance': 'finance',
     'hobbies': 'hobbies',
 };
-function categorizeEntity(name, frontmatterType, notePath, customCategories) {
+function categorizeEntity(name, techKeywords, frontmatterType, notePath, customCategories) {
     // 0. Frontmatter type takes priority (custom categories checked first)
     if (frontmatterType) {
         const mapped = mapFrontmatterType(frontmatterType, customCategories);
@@ -297,7 +318,11 @@ function categorizeEntity(name, frontmatterType, notePath, customCategories) {
     }
     const nameLower = name.toLowerCase();
     const words = name.split(/\s+/);
-    // 1. Acronym check (all uppercase, 2-6 chars)
+    // 1. Technology check (keyword match)
+    if (techKeywords.some(tech => nameLower.includes(tech))) {
+        return 'technologies';
+    }
+    // 2. Acronym check (all uppercase, 2-6 chars)
     if (name === name.toUpperCase() && name.length >= 2 && name.length <= 6) {
         return 'acronyms';
     }
@@ -420,6 +445,7 @@ async function scanDirectory(dirPath, basePath, excludeFolders) {
  */
 export async function scanVaultEntities(vaultPath, options = {}) {
     const excludeFolders = options.excludeFolders ?? [];
+    const techKeywords = options.techKeywords ?? DEFAULT_TECH_KEYWORDS;
     const customCategories = options.customCategories;
     // Scan vault for all markdown files
     const allEntities = await scanDirectory(vaultPath, vaultPath, excludeFolders);
@@ -473,7 +499,7 @@ export async function scanVaultEntities(vaultPath, options = {}) {
         },
     };
     for (const entity of uniqueEntities) {
-        const category = categorizeEntity(entity.name, entity.frontmatterType, entity.relativePath, customCategories);
+        const category = categorizeEntity(entity.name, techKeywords, entity.frontmatterType, entity.relativePath, customCategories);
         // Store as EntityWithAliases object
         const entityObj = {
             name: entity.name,
