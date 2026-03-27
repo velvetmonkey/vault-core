@@ -154,11 +154,6 @@ export interface ScanOptions {
   excludeFolders?: string[];
 
   /**
-   * Tech keywords for categorization
-   */
-  techKeywords?: string[];
-
-  /**
    * Custom entity categories from FlywheelConfig.
    * Keys are frontmatter `type:` values; entities with matching types
    * get that key as their category instead of the default classifier.

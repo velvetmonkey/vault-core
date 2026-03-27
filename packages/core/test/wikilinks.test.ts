@@ -17,13 +17,13 @@ describe('applyWikilinks', () => {
   });
 
   it('should apply multiple wikilinks', () => {
-    const content = 'Using React and TypeScript for the API';
-    const entities = ['React', 'TypeScript', 'API'];
+    const content = 'Using React and TypeScript for the MCP';
+    const entities = ['React', 'TypeScript', 'MCP'];
     const result = applyWikilinks(content, entities);
 
     expect(result.content).toContain('[[React]]');
     expect(result.content).toContain('[[TypeScript]]');
-    expect(result.content).toContain('[[API]]');
+    expect(result.content).toContain('[[MCP]]');
     expect(result.linksAdded).toBe(3);
   });
 
@@ -114,27 +114,27 @@ Learn React here`;
   });
 
   it('should prioritize longer matches', () => {
-    const content = 'Working with API Management and the API';
-    const entities = ['API', 'API Management'];
+    const content = 'Working with MCP Orchestrator and the MCP';
+    const entities = ['MCP', 'MCP Orchestrator'];
     const result = applyWikilinks(content, entities);
 
-    // Should link "API Management" first, then standalone "API"
-    expect(result.content).toContain('[[API Management]]');
-    expect(result.content).toContain('and the [[API]]');
+    // Should link "MCP Orchestrator" first, then standalone "MCP"
+    expect(result.content).toContain('[[MCP Orchestrator]]');
+    expect(result.content).toContain('and the [[MCP]]');
   });
 
   it('should prefer shorter entity term when multiple entities match same text', () => {
-    // When "api" appears alone, both "API" (3 chars) and "API Management" (14 chars) could match
-    // via case-insensitive matching. We should prefer "API" as the more exact match.
-    const content = 'the api is broken';
-    const entities = ['API', 'API Management'];
+    // When "mcp" appears alone, both "MCP" (3 chars) and "MCP Orchestrator" (16 chars) could match
+    // via case-insensitive matching. We should prefer "MCP" as the more exact match.
+    const content = 'the mcp is broken';
+    const entities = ['MCP', 'MCP Orchestrator'];
     const result = applyWikilinks(content, entities);
 
-    // Should link to "API", not "API Management" - shorter entity is more exact
-    expect(result.content).toBe('the [[API]] is broken');
+    // Should link to "MCP", not "MCP Orchestrator" - shorter entity is more exact
+    expect(result.content).toBe('the [[MCP]] is broken');
     expect(result.linksAdded).toBe(1);
-    expect(result.linkedEntities).toContain('API');
-    expect(result.linkedEntities).not.toContain('API Management');
+    expect(result.linkedEntities).toContain('MCP');
+    expect(result.linkedEntities).not.toContain('MCP Orchestrator');
   });
 
   it('should exclude common words', () => {
@@ -149,19 +149,19 @@ Learn React here`;
     expect(result.content).toContain('[[Flywheel]]');
   });
 
-  it('excludes "Month End" from auto-linking', () => {
-    const content = 'The config files are off-limits for Month End to edit';
+  it('excludes single common-word entities from auto-linking', () => {
+    const content = 'The config files are off-limits for Monday to edit';
     const result = applyWikilinks(content, [
-      { name: 'Month End', path: 'month-end.md', aliases: [] }
+      { name: 'Monday', path: 'monday.md', aliases: [] }
     ]);
     expect(result.content).toBe(content);
     expect(result.linksAdded).toBe(0);
   });
 
-  it('excludes "Quarterly Review" from auto-linking', () => {
-    const content = 'Prepare for the Quarterly Review next week';
+  it('excludes another common-word entity from auto-linking', () => {
+    const content = 'Prepare for the review next week';
     const result = applyWikilinks(content, [
-      { name: 'Quarterly Review', path: 'quarterly-review.md', aliases: [] }
+      { name: 'review', path: 'review.md', aliases: [] }
     ]);
     expect(result.content).toBe(content);
     expect(result.linksAdded).toBe(0);
@@ -176,12 +176,12 @@ Learn React here`;
   });
 
   it('should respect word boundaries', () => {
-    const content = 'The API and APIManager are different';
-    const entities = ['API'];
+    const content = 'The MCP and MCPManager are different';
+    const entities = ['MCP'];
     const result = applyWikilinks(content, entities);
 
-    // Should only link standalone "API", not "API" within "APIManager"
-    expect(result.content).toBe('The [[API]] and APIManager are different');
+    // Should only link standalone "MCP", not "MCP" within "MCPManager"
+    expect(result.content).toBe('The [[MCP]] and MCPManager are different');
     expect(result.linksAdded).toBe(1);
   });
 
@@ -237,13 +237,13 @@ Learn React here`;
     });
 
     it('should match entity by name without display text', () => {
-      const content = 'The API is documented';
+      const content = 'The MCP is documented';
       const entities = [
-        { name: 'API', path: 'API.md', aliases: ['Application Programming Interface'] }
+        { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
       ];
       const result = applyWikilinks(content, entities);
 
-      expect(result.content).toBe('The [[API]] is documented');
+      expect(result.content).toBe('The [[MCP]] is documented');
       expect(result.linksAdded).toBe(1);
     });
 
@@ -271,14 +271,14 @@ Learn React here`;
     });
 
     it('should handle multiple aliases for same entity', () => {
-      const content = 'The JS framework uses JavaScript internally';
+      const content = 'The Kubectl tool uses Kubernetes internally';
       const entities = [
-        { name: 'JavaScript', path: 'JavaScript.md', aliases: ['JS', 'ECMAScript'] }
+        { name: 'Kubernetes', path: 'Kubernetes.md', aliases: ['Kubectl', 'Kustomize'] }
       ];
       const result = applyWikilinks(content, entities, { firstOccurrenceOnly: false });
 
-      expect(result.content).toContain('[[JavaScript|JS]]');
-      expect(result.content).toContain('[[JavaScript]]');
+      expect(result.content).toContain('[[Kubernetes|Kubectl]]');
+      expect(result.content).toContain('[[Kubernetes]]');
       expect(result.linksAdded).toBe(2);
     });
 
@@ -295,15 +295,15 @@ Learn React here`;
     });
 
     it('should prioritize longer alias matches', () => {
-      const content = 'Working with API Management and the API';
+      const content = 'Working with MCP Orchestrator and the MCP';
       const entities = [
-        { name: 'API', path: 'API.md', aliases: [] },
-        { name: 'API Management Platform', path: 'API Management Platform.md', aliases: ['API Management'] }
+        { name: 'MCP', path: 'MCP.md', aliases: [] },
+        { name: 'MCP Orchestrator Platform', path: 'MCP Orchestrator Platform.md', aliases: ['MCP Orchestrator'] }
       ];
       const result = applyWikilinks(content, entities);
 
-      expect(result.content).toContain('[[API Management Platform|API Management]]');
-      expect(result.content).toContain('the [[API]]');
+      expect(result.content).toContain('[[MCP Orchestrator Platform|MCP Orchestrator]]');
+      expect(result.content).toContain('the [[MCP]]');
     });
 
     it('should work with string entities mixed with object entities', () => {
@@ -367,10 +367,10 @@ Learn React here`;
 
     it('should match -ing forms to base entity', () => {
       const result = applyWikilinks(
-        'She was Sprinting across the field',
-        [{ name: 'Sprint', path: 'Sprint.md', aliases: [] }]
+        'She was Terraforming across the field',
+        [{ name: 'Terraform', path: 'Terraform.md', aliases: [] }]
       );
-      expect(result.content).toContain('[[Sprint|Sprinting]]');
+      expect(result.content).toContain('[[Terraform|Terraforming]]');
     });
 
     it('should NOT stem-match unrelated words (Hero ≠ Hera)', () => {
@@ -453,14 +453,14 @@ describe('suggestWikilinks', () => {
     });
 
     it('should suggest entity when content matches name', () => {
-      const content = 'The API is documented';
+      const content = 'The MCP is documented';
       const entities = [
-        { name: 'API', path: 'API.md', aliases: ['Application Programming Interface'] }
+        { name: 'MCP', path: 'MCP.md', aliases: ['Model Context Protocol'] }
       ];
       const suggestions = suggestWikilinks(content, entities);
 
       expect(suggestions).toHaveLength(1);
-      expect(suggestions[0].entity).toBe('API');
+      expect(suggestions[0].entity).toBe('MCP');
     });
 
     it('should handle multiple aliases for same entity', () => {
@@ -488,20 +488,20 @@ describe('suggestWikilinks', () => {
     });
 
     it('should prioritize longer alias matches', () => {
-      const content = 'Working with API Management and the API';
+      const content = 'Working with MCP Orchestrator and the MCP';
       const entities = [
-        { name: 'API', path: 'API.md', aliases: [] },
-        { name: 'API Management Platform', path: 'API Management Platform.md', aliases: ['API Management'] }
+        { name: 'MCP', path: 'MCP.md', aliases: [] },
+        { name: 'MCP Orchestrator Platform', path: 'MCP Orchestrator Platform.md', aliases: ['MCP Orchestrator'] }
       ];
       const suggestions = suggestWikilinks(content, entities);
 
       // Should have both suggestions
       expect(suggestions).toHaveLength(2);
       // First suggestion should be for the longer match
-      const apiMgmtSuggestion = suggestions.find(s => s.entity === 'API Management Platform');
-      const apiSuggestion = suggestions.find(s => s.entity === 'API');
-      expect(apiMgmtSuggestion).toBeDefined();
-      expect(apiSuggestion).toBeDefined();
+      const mcpOrchSuggestion = suggestions.find(s => s.entity === 'MCP Orchestrator Platform');
+      const mcpSuggestion = suggestions.find(s => s.entity === 'MCP');
+      expect(mcpOrchSuggestion).toBeDefined();
+      expect(mcpSuggestion).toBeDefined();
     });
 
     it('should work with string entities mixed with object entities', () => {
@@ -546,22 +546,22 @@ describe('suggestWikilinks', () => {
 describe('detectImplicitEntities', () => {
   describe('proper nouns pattern', () => {
     it('should detect multi-word proper nouns', () => {
-      const content = 'I discussed the project with Marcus Johnson yesterday.';
+      const content = 'I discussed the project with Kazimir Petrov yesterday.';
       const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].text).toBe('Marcus Johnson');
+      expect(matches[0].text).toBe('Kazimir Petrov');
       expect(matches[0].pattern).toBe('proper-nouns');
     });
 
     it('should detect multiple proper nouns', () => {
-      const content = 'Project Alpha is led by Sarah Connor and John Smith.';
+      const content = 'Zettelkasten Nexus is led by Kazimir Petrov and Xiomara Valdez.';
       const matches = detectImplicitEntities(content);
 
       expect(matches).toHaveLength(3);
-      expect(matches.map(m => m.text)).toContain('Project Alpha');
-      expect(matches.map(m => m.text)).toContain('Sarah Connor');
-      expect(matches.map(m => m.text)).toContain('John Smith');
+      expect(matches.map(m => m.text)).toContain('Zettelkasten Nexus');
+      expect(matches.map(m => m.text)).toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Xiomara Valdez');
     });
 
     it('should detect three-word proper nouns', () => {
@@ -611,12 +611,12 @@ describe('detectImplicitEntities', () => {
 
   describe('single-caps pattern', () => {
     it('should detect single capitalized words after lowercase when enabled', () => {
-      const content = 'I spoke with Marcus about the project.';
+      const content = 'I spoke with Kazimir about the project.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
-      expect(matches.map(m => m.text)).toContain('Marcus');
+      expect(matches.map(m => m.text)).toContain('Kazimir');
     });
 
     it('should not detect sentence starters', () => {
@@ -631,64 +631,64 @@ describe('detectImplicitEntities', () => {
     });
 
     it('should not be enabled by default', () => {
-      const content = 'I talked to Marcus yesterday.';
+      const content = 'I talked to Kazimir yesterday.';
       const matchesDefault = detectImplicitEntities(content);
       const matchesWithSingleCaps = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
-      // Default should not have Marcus (single word)
-      expect(matchesDefault.map(m => m.text)).not.toContain('Marcus');
+      // Default should not have Kazimir (single word)
+      expect(matchesDefault.map(m => m.text)).not.toContain('Kazimir');
       // With single-caps should have it
-      expect(matchesWithSingleCaps.map(m => m.text)).toContain('Marcus');
+      expect(matchesWithSingleCaps.map(m => m.text)).toContain('Kazimir');
     });
   });
 
   describe('protected zones', () => {
     it('should not detect entities inside code blocks', () => {
-      const content = '```\nMarcus Johnson\n```\nOutside code';
+      const content = '```\nKazimir Petrov\n```\nOutside code';
       const matches = detectImplicitEntities(content);
 
-      expect(matches.map(m => m.text)).not.toContain('Marcus Johnson');
+      expect(matches.map(m => m.text)).not.toContain('Kazimir Petrov');
     });
 
     it('should not detect entities inside existing wikilinks', () => {
-      const content = 'See [[Marcus Johnson]] for details. Also John Smith.';
+      const content = 'See [[Kazimir Petrov]] for details. Also Xiomara Valdez.';
       const matches = detectImplicitEntities(content);
 
-      // Marcus Johnson is in wikilink, should not be detected
-      // John Smith should be detected
-      expect(matches.map(m => m.text)).not.toContain('Marcus Johnson');
-      expect(matches.map(m => m.text)).toContain('John Smith');
+      // Kazimir Petrov is in wikilink, should not be detected
+      // Xiomara Valdez should be detected
+      expect(matches.map(m => m.text)).not.toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Xiomara Valdez');
     });
 
     it('should not detect entities inside inline code', () => {
-      const content = 'Run `Marcus Johnson` command and contact John Smith.';
+      const content = 'Run `Kazimir Petrov` command and contact Xiomara Valdez.';
       const matches = detectImplicitEntities(content);
 
-      expect(matches.map(m => m.text)).not.toContain('Marcus Johnson');
-      expect(matches.map(m => m.text)).toContain('John Smith');
+      expect(matches.map(m => m.text)).not.toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Xiomara Valdez');
     });
   });
 
   describe('deduplication', () => {
     it('should not return duplicate entities', () => {
-      const content = 'Marcus Johnson met Marcus Johnson at the meeting.';
+      const content = 'Kazimir Petrov met Kazimir Petrov at the meeting.';
       const matches = detectImplicitEntities(content);
 
       // Should only have one instance
-      expect(matches.filter(m => m.text === 'Marcus Johnson')).toHaveLength(1);
+      expect(matches.filter(m => m.text === 'Kazimir Petrov')).toHaveLength(1);
     });
   });
 
   describe('common word exclusion', () => {
     it('should exclude common words like Monday, January', () => {
-      const content = 'Meeting with John Smith on Monday January 5th.';
+      const content = 'Meeting with Kazimir Petrov on Monday January 5th.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
-      expect(matches.map(m => m.text)).toContain('John Smith');
+      expect(matches.map(m => m.text)).toContain('Kazimir Petrov');
       expect(matches.map(m => m.text)).not.toContain('Monday');
       expect(matches.map(m => m.text)).not.toContain('January');
     });
@@ -696,17 +696,17 @@ describe('detectImplicitEntities', () => {
 
   describe('overlap filtering', () => {
     it('should keep longer match when proper-nouns and single-caps overlap', () => {
-      const content = 'Morning Briefing was productive today.';
+      const content = 'Obsidian Flywheel was productive today.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
-      expect(matches.map(m => m.text)).toContain('Morning Briefing');
-      expect(matches.map(m => m.text)).not.toContain('Briefing');
+      expect(matches.map(m => m.text)).toContain('Obsidian Flywheel');
+      expect(matches.map(m => m.text)).not.toContain('Flywheel');
     });
 
     it('should not produce corrupted wikilinks like ]]ng]]', () => {
-      const content = 'Morning Briefing (34.9s) was great.';
+      const content = 'Obsidian Flywheel (34.9s) was great.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
@@ -718,18 +718,18 @@ describe('detectImplicitEntities', () => {
         result = result.slice(0, m.start) + `[[${m.text}]]` + result.slice(m.end);
       }
 
-      expect(result).toContain('[[Morning Briefing]]');
+      expect(result).toContain('[[Obsidian Flywheel]]');
       expect(result).not.toMatch(/\]\]\w+\]\]/);
     });
 
     it('should keep non-overlapping matches from different patterns', () => {
-      const content = 'Sam Altman discussed the Specialist Verticals topic.';
+      const content = 'Kazimir Petrov discussed the Obsidian Flywheel topic.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['proper-nouns', 'single-caps']
       });
 
-      expect(matches.map(m => m.text)).toContain('Sam Altman');
-      expect(matches.map(m => m.text)).toContain('Specialist Verticals');
+      expect(matches.map(m => m.text)).toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Obsidian Flywheel');
     });
   });
 
@@ -745,22 +745,22 @@ describe('detectImplicitEntities', () => {
     });
 
     it('should still detect proper nouns that are not sentence starters', () => {
-      const content = 'Working with Marcus Johnson on the Alpha Project launch.';
+      const content = 'Working with Kazimir Petrov on the Zettelkasten Nexus launch.';
       const matches = detectImplicitEntities(content);
 
-      expect(matches.map(m => m.text)).toContain('Marcus Johnson');
-      expect(matches.map(m => m.text)).toContain('Alpha Project');
+      expect(matches.map(m => m.text)).toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Zettelkasten Nexus');
     });
   });
 
   describe('acronym length filtering', () => {
     it('should detect short ALL-CAPS acronyms (3-5 chars)', () => {
-      const content = 'The API uses ONNX and LLM for processing.';
+      const content = 'The MCP uses ONNX and LLM for processing.';
       const matches = detectImplicitEntities(content, {
         implicitPatterns: ['acronyms']
       });
 
-      expect(matches.map(m => m.text)).toContain('API');
+      expect(matches.map(m => m.text)).toContain('MCP');
       expect(matches.map(m => m.text)).toContain('ONNX');
       expect(matches.map(m => m.text)).toContain('LLM');
     });
@@ -821,21 +821,21 @@ describe('detectImplicitEntities', () => {
 
   describe('regression: real entities still link correctly', () => {
     it('should still link real multi-word proper nouns', () => {
-      const content = 'Meeting with John Smith about Project Alpha tomorrow.';
+      const content = 'Meeting with Kazimir Petrov about Zettelkasten Nexus tomorrow.';
       const matches = detectImplicitEntities(content);
 
-      expect(matches.map(m => m.text)).toContain('John Smith');
-      expect(matches.map(m => m.text)).toContain('Project Alpha');
+      expect(matches.map(m => m.text)).toContain('Kazimir Petrov');
+      expect(matches.map(m => m.text)).toContain('Zettelkasten Nexus');
     });
 
     it('should still link real entities via applyWikilinks', () => {
-      const content = 'Working with React and TypeScript on the API.';
-      const entities = ['React', 'TypeScript', 'API'];
+      const content = 'Working with React and TypeScript on the MCP.';
+      const entities = ['React', 'TypeScript', 'MCP'];
       const result = applyWikilinks(content, entities);
 
       expect(result.content).toContain('[[React]]');
       expect(result.content).toContain('[[TypeScript]]');
-      expect(result.content).toContain('[[API]]');
+      expect(result.content).toContain('[[MCP]]');
       expect(result.linksAdded).toBe(3);
     });
 
@@ -864,29 +864,29 @@ describe('processWikilinks', () => {
   });
 
   it('should detect and link implicit entities when enabled', () => {
-    const content = 'Using React with Marcus Johnson for Project Alpha.';
+    const content = 'Using React with Kazimir Petrov for Zettelkasten Nexus.';
     const entities = ['React'];
 
     const result = processWikilinks(content, entities, { detectImplicit: true });
 
     expect(result.content).toContain('[[React]]');
-    expect(result.content).toContain('[[Marcus Johnson]]');
-    expect(result.content).toContain('[[Project Alpha]]');
-    expect(result.implicitEntities).toContain('Marcus Johnson');
-    expect(result.implicitEntities).toContain('Project Alpha');
+    expect(result.content).toContain('[[Kazimir Petrov]]');
+    expect(result.content).toContain('[[Zettelkasten Nexus]]');
+    expect(result.implicitEntities).toContain('Kazimir Petrov');
+    expect(result.implicitEntities).toContain('Zettelkasten Nexus');
   });
 
   it('should not duplicate link known entities as implicit', () => {
-    const content = 'Working with Marcus Johnson on the project.';
+    const content = 'Working with Kazimir Petrov on the project.';
     const entities = [
-      { name: 'Marcus Johnson', path: 'Marcus Johnson.md', aliases: [] }
+      { name: 'Kazimir Petrov', path: 'Kazimir Petrov.md', aliases: [] }
     ];
 
     const result = processWikilinks(content, entities, { detectImplicit: true });
 
     // Should be linked via known entities, not implicit
-    expect(result.content).toContain('[[Marcus Johnson]]');
-    expect(result.implicitEntities || []).not.toContain('Marcus Johnson');
+    expect(result.content).toContain('[[Kazimir Petrov]]');
+    expect(result.implicitEntities || []).not.toContain('Kazimir Petrov');
   });
 
   it('should convert quoted terms to wikilinks', () => {
@@ -915,12 +915,12 @@ describe('processWikilinks', () => {
   });
 
   it('should combine known and implicit entity counts', () => {
-    const content = 'React is used by Marcus Johnson for Project Alpha.';
+    const content = 'React is used by Kazimir Petrov for Zettelkasten Nexus.';
     const entities = ['React'];
 
     const result = processWikilinks(content, entities, { detectImplicit: true });
 
-    // 1 known (React) + 2 implicit (Marcus Johnson, Project Alpha)
+    // 1 known (React) + 2 implicit (Kazimir Petrov, Zettelkasten Nexus)
     expect(result.linksAdded).toBe(3);
     expect(result.linkedEntities).toContain('React');
     expect(result.implicitEntities).toHaveLength(2);
@@ -1364,9 +1364,9 @@ describe('noise reduction', () => {
     });
 
     it('should still match proper nouns on the same line', () => {
-      const result = detectImplicitEntities('met with Marcus Johnson yesterday');
+      const result = detectImplicitEntities('met with Kazimir Petrov yesterday');
       const names = result.map(m => m.text);
-      expect(names).toContain('Marcus Johnson');
+      expect(names).toContain('Kazimir Petrov');
     });
   });
 
@@ -1421,9 +1421,9 @@ describe('noise reduction', () => {
 
     it('should still detect real proper nouns via proper-nouns pattern', () => {
       // proper-nouns is in the default config (multi-word capitalized phrases)
-      const result = detectImplicitEntities('talked with Marcus Johnson yesterday');
+      const result = detectImplicitEntities('talked with Kazimir Petrov yesterday');
       const names = result.map(m => m.text);
-      expect(names).toContain('Marcus Johnson');
+      expect(names).toContain('Kazimir Petrov');
     });
   });
 
