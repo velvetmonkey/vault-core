@@ -47,6 +47,10 @@ export function getStateDbPath(vaultPath) {
 export function initSchema(db) {
     // Enable WAL mode for better concurrent read performance
     db.pragma('journal_mode = WAL');
+    // Incremental auto-vacuum — reclaims freed pages without full VACUUM blocking.
+    // Only takes effect on new DBs (before first table). Existing DBs need a one-time
+    // VACUUM in openStateDb() to activate.
+    db.pragma('auto_vacuum = INCREMENTAL');
     // Enable foreign keys
     db.pragma('foreign_keys = ON');
     // Performance tuning
