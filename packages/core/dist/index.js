@@ -15,7 +15,7 @@ export { stem } from './stemmer.js';
 // Entity scanning
 export { scanVaultEntities, getAllEntities, getAllEntitiesWithTypes, getEntityName, getEntityAliases, loadEntityCache, saveEntityCache, ENTITY_CACHE_VERSION, } from './entities.js';
 // Wikilinks
-export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
+export { applyWikilinks, processWikilinks, resolveAliasWikilinks, suggestWikilinks, detectImplicitEntities, findEntityMatches, isCommonWordEntity, ALWAYS_CAPITALIZED, IMPLICIT_EXCLUDE_WORDS, } from './wikilinks.js';
 // Protected zones
 export { getProtectedZones, getProtectedZonesRegex, isInProtectedZone, mergeOverlappingZones, rangeOverlapsProtectedZone, } from './protectedZones.js';
 // AST parsing

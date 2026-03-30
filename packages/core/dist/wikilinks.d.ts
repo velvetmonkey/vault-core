@@ -9,6 +9,18 @@
  * - Alias resolution for existing wikilinks (resolves [[alias]] to [[Entity|alias]])
  */
 import type { WikilinkOptions, WikilinkResult, Entity, ExtendedWikilinkOptions, ImplicitEntityMatch, ImplicitEntityConfig, ResolveAliasOptions } from './types.js';
+/**
+ * Words that are always capitalized in English — case-sensitive matching
+ * cannot distinguish proper-noun vs common usage for these.
+ */
+export declare const ALWAYS_CAPITALIZED: Set<string>;
+/**
+ * True when entity's lowercase form is a common word but its casing is distinctive
+ * AND the word is not always-capitalized in English (like Monday, January, American).
+ * These terms are allowed through exclusion but matched case-sensitively.
+ * e.g. "REST" (common word "rest") → match only "REST" in content, not "rest"
+ */
+export declare function isCommonWordEntity(entity: string): boolean;
 export declare function findEntityMatches(content: string, entity: string, caseInsensitive: boolean): Array<{
     start: number;
     end: number;

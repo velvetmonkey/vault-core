@@ -8,7 +8,7 @@
 import Database from 'better-sqlite3';
 export declare const BACKUP_ROTATION_COUNT = 3;
 /** High-value tables whose data should survive a corruption recovery. */
-export declare const SALVAGE_TABLES: readonly ["wikilink_feedback", "wikilink_applications", "suggestion_events", "wikilink_suppressions", "note_links", "note_link_history", "memories", "session_summaries", "corrections"];
+export declare const SALVAGE_TABLES: readonly ["wikilink_feedback", "wikilink_applications", "suggestion_events", "wikilink_suppressions", "note_links", "note_link_history", "memories", "session_summaries", "corrections", "tool_selection_feedback"];
 /**
  * Get the database path for a vault
  */
