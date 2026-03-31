@@ -263,7 +263,7 @@ function escapeRegex(str) {
  * Check if an entity should be excluded from wikilikning
  */
 function shouldExcludeEntity(entity, isAlias = false) {
-    // Skip single-char terms (e.g. alias "I" for Ben)
+    // Skip single-char terms (e.g. alias "I" for Max)
     if (entity.length < 2)
         return true;
     if (getMergedExcludeWords().has(entity.toLowerCase()))
@@ -272,7 +272,7 @@ function shouldExcludeEntity(entity, isAlias = false) {
     if (entity.includes('-') && entity === entity.toLowerCase())
         return true;
     // Short aliases (≤3 chars) must be ALL-UPPERCASE to survive (e.g., "CI", "ML" ok, "api", "tF" blocked)
-    // Entity names like "Ben" (3 chars, mixed case) are unaffected since isAlias=false for names.
+    // Entity names like "Max" (3 chars, mixed case) are unaffected since isAlias=false for names.
     if (isAlias && entity.length <= 3 && entity !== entity.toUpperCase())
         return true;
     return false;
