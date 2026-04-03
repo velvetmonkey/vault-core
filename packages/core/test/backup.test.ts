@@ -337,7 +337,7 @@ describe('Backup & Recovery', () => {
   // Extended salvage scenarios
   // ===========================================================================
   describe('salvageFeedbackTables (extended)', () => {
-    it('salvages all 9 SALVAGE_TABLES when populated', () => {
+    it('salvages all 12 SALVAGE_TABLES when populated', () => {
       const sourceDb = openStateDb(testVaultPath);
       const now = Date.now();
 
@@ -369,6 +369,15 @@ describe('Backup & Recovery', () => {
       sourceDb.db.prepare(
         `INSERT INTO corrections (correction_type, description, source) VALUES (?, ?, ?)`
       ).run('wrong_link', 'test correction', 'user');
+      sourceDb.db.prepare(
+        `INSERT INTO tool_selection_feedback (timestamp, tool_name, correct) VALUES (?, ?, ?)`
+      ).run(now, 'search', 1);
+      sourceDb.db.prepare(
+        `INSERT INTO prospect_ledger (term, display_name, note_path, seen_day, source, confidence, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run('test-term', 'Test Term', 'n.md', '2026-04-03', 'implicit', 'low', now, now);
+      sourceDb.db.prepare(
+        `INSERT INTO prospect_summary (term, display_name, note_count, day_count, total_sightings, best_source, best_confidence, best_score, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run('test-term', 'Test Term', 1, 1, 1, 'implicit', 'low', 0, now, now, now);
       sourceDb.close();
 
       const backupPath = `${dbPath}.full-salvage`;
