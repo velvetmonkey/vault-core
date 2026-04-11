@@ -35,6 +35,8 @@ saveVaultIndexCache, loadVaultIndexCache, getVaultIndexCacheInfo, rebuildEntitie
 loadContentHashes, saveContentHashBatch, renameContentHash, 
 // Database file management
 deleteStateDbFiles, backupStateDb, preserveCorruptedDb, 
+// Migrations (exported for tests)
+initSchema, migrateV40, 
 // Backup & Recovery
 BACKUP_ROTATION_COUNT, SALVAGE_TABLES, rotateBackupFiles, safeBackupAsync, checkDbIntegrity, salvageFeedbackTables, attemptSalvage, 
 // Constants

@@ -17,6 +17,40 @@ export declare function getStateDbPath(vaultPath: string): string;
  * Initialize schema and run migrations
  */
 export declare function initSchema(db: Database.Database): void;
+/**
+ * Run the v40 migration: add COLLATE NOCASE to path columns across 14 tables,
+ * collapsing mixed-case duplicates with table-specific conflict resolution.
+ *
+ * Safety:
+ * - Wrapped in a single db.transaction(). better-sqlite3 supports transactional
+ *   DDL (CREATE/DROP/ALTER RENAME participate in transactions), so any rebuild
+ *   failure rolls back the whole batch. Partial-upgrade state is impossible.
+ * - Caller (openStateDb) runs a synchronous VACUUM INTO backup before calling
+ *   initSchema when upgrading from < v40.
+ * - No VACUUM or PRAGMA statements inside the transaction (they auto-commit).
+ * - Foreign keys disabled for the duration to permit DROP TABLE on referenced
+ *   tables. Re-enabled at the end.
+ *
+ * Conflict resolution per table (see p42 v40 plan S3 for full rationale):
+ *
+ * | Table                  | Rule                                               |
+ * |------------------------|----------------------------------------------------|
+ * | entities               | column alter (via rebuild) — no rows to merge      |
+ * | note_embeddings        | MAX(updated_at)                                    |
+ * | content_hashes         | MAX(updated_at)                                    |
+ * | tasks                  | best-effort MAX(id); file scan reconciles          |
+ * | note_links             | MAX(weight_updated_at), keep matching weight       |
+ * | note_tags              | INSERT OR IGNORE — pure dedup, no values to merge  |
+ * | note_link_history      | MIN(first_seen_at), MAX(edits_survived/last_pos)   |
+ * | note_moves             | column alter — preserve all rows                   |
+ * | suggestion_events      | MAX(total_score) per (timestamp, note, entity)     |
+ * | corrections            | column alter — preserve all rows                   |
+ * | prospect_ledger        | MIN first_seen, MAX last_seen, SUM sightings       |
+ * | proactive_queue        | MAX(score), prefer 'pending' status                |
+ * | retrieval_cooccurrence | SUM(weight), MIN(timestamp)                        |
+ * | wikilink_feedback      | column alter — preserve all rows                   |
+ */
+export declare function migrateV40(db: Database.Database): boolean;
 export declare function deleteStateDbFiles(dbPath: string): void;
 /** Back up state.db before opening (skip if missing or 0 bytes). */
 export declare function backupStateDb(dbPath: string): void;
