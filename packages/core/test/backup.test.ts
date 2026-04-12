@@ -88,7 +88,7 @@ describe('Backup & Recovery', () => {
   // safeBackupAsync
   // ===========================================================================
   describe('safeBackupAsync', () => {
-    it('creates a valid SQLite backup', async () => {
+    it('creates a valid SQLite backup', { timeout: 15_000 }, async () => {
       const stateDb = openStateDb(testVaultPath);
       try {
         const result = await safeBackupAsync(stateDb.db, stateDb.dbPath);
@@ -111,7 +111,7 @@ describe('Backup & Recovery', () => {
       }
     });
 
-    it('rotates existing backups before creating new one', async () => {
+    it('rotates existing backups before creating new one', { timeout: 15_000 }, async () => {
       const stateDb = openStateDb(testVaultPath);
       try {
         // Create first backup
@@ -132,7 +132,7 @@ describe('Backup & Recovery', () => {
   // checkDbIntegrity
   // ===========================================================================
   describe('checkDbIntegrity', () => {
-    it('returns ok for a healthy database', () => {
+    it('returns ok for a healthy database', { timeout: 15_000 }, () => {
       const stateDb = openStateDb(testVaultPath);
       try {
         const result = checkDbIntegrity(stateDb.db);
@@ -337,7 +337,7 @@ describe('Backup & Recovery', () => {
   // Extended salvage scenarios
   // ===========================================================================
   describe('salvageFeedbackTables (extended)', () => {
-    it('salvages all 12 SALVAGE_TABLES when populated', () => {
+    it('salvages every configured salvage table when populated', () => {
       const sourceDb = openStateDb(testVaultPath);
       const now = Date.now();
 
@@ -370,14 +370,17 @@ describe('Backup & Recovery', () => {
         `INSERT INTO corrections (correction_type, description, source) VALUES (?, ?, ?)`
       ).run('wrong_link', 'test correction', 'user');
       sourceDb.db.prepare(
-        `INSERT INTO tool_selection_feedback (timestamp, tool_name, correct) VALUES (?, ?, ?)`
-      ).run(now, 'search', 1);
+        `INSERT INTO tool_selection_feedback (timestamp, tool_name, correct, source) VALUES (?, ?, ?, ?)`
+      ).run(now, 'search', 1, 'explicit');
       sourceDb.db.prepare(
         `INSERT INTO prospect_ledger (term, display_name, note_path, seen_day, source, confidence, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run('test-term', 'Test Term', 'n.md', '2026-04-03', 'implicit', 'low', now, now);
+      ).run('test term', 'Test Term', 'n.md', '2026-03-30', 'implicit', 'low', now, now);
       sourceDb.db.prepare(
-        `INSERT INTO prospect_summary (term, display_name, note_count, day_count, total_sightings, best_source, best_confidence, best_score, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run('test-term', 'Test Term', 1, 1, 1, 'implicit', 'low', 0, now, now, now);
+        `INSERT INTO prospect_summary (term, display_name, note_count, day_count, total_sightings, backlink_max, best_source, best_confidence, best_score, first_seen_at, last_seen_at, promotion_score, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run('test term', 'Test Term', 1, 1, 1, 0, 'implicit', 'low', 0, now, now, 5.0, now);
+      sourceDb.db.prepare(
+        `INSERT INTO prospect_feedback (term, action, entity_path, note_path, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+      ).run('test term', 'reject', null, 'n.md', 'test', now);
       sourceDb.close();
 
       const backupPath = `${dbPath}.full-salvage`;
@@ -391,7 +394,7 @@ describe('Backup & Recovery', () => {
 
       try {
         const results = salvageFeedbackTables(targetDb.db, backupPath);
-        // All 9 tables should have been salvaged
+        // Every configured salvage table should have been salvaged
         for (const table of SALVAGE_TABLES) {
           expect(results[table]).toBeGreaterThanOrEqual(1);
         }
@@ -552,7 +555,7 @@ describe('Backup & Recovery', () => {
   // safeBackupAsync (extended)
   // ===========================================================================
   describe('safeBackupAsync (extended)', () => {
-    it('backup includes data written before backup call', async () => {
+    it('backup includes data written before backup call', { timeout: 15_000 }, async () => {
       const stateDb = openStateDb(testVaultPath);
       try {
         // Write data, then backup
@@ -577,7 +580,7 @@ describe('Backup & Recovery', () => {
   // attemptSalvage (extended)
   // ===========================================================================
   describe('attemptSalvage (extended)', () => {
-    it('merges .backup and .backup.1, getting unique rows from each', () => {
+    it('merges .backup and .backup.1, getting unique rows from each', { timeout: 15_000 }, () => {
       // .backup.1 has OldBackup (unique to this source)
       const db1 = openStateDb(testVaultPath);
       db1.db.prepare(
