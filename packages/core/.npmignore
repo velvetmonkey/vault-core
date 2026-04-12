@@ -1,9 +1,0 @@
-# Development files
-src/
-test/
-*.test.ts
-tsconfig.json
-
-# Claude Code development files
-CLAUDE.md
-**/CLAUDE.md
