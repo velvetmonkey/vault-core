@@ -12,6 +12,10 @@ import { SCHEMA_VERSION, SCHEMA_SQL, STATE_DB_FILENAME, FLYWHEEL_DIR } from './s
 // =============================================================================
 // Backup & Recovery Constants
 // =============================================================================
+/**
+ * Number of rotated backup generations kept alongside the current `.backup`
+ * file. Steady state retention is `.backup` plus `.backup.1`..`.backup.N`.
+ */
 export const BACKUP_ROTATION_COUNT = 3;
 /** High-value tables whose data should survive a corruption recovery. */
 export const SALVAGE_TABLES = [
@@ -398,6 +402,38 @@ export function initSchema(db) {
                 db.exec(`ALTER TABLE prospect_summary ADD COLUMN last_feedback_at INTEGER;`);
             }
             db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(41);
+        }
+        if (currentVersion < 42 && v40Applied) {
+            const memoryColumns = new Set(db.prepare(`PRAGMA table_info(memories)`).all().map((row) => row.name));
+            if (!memoryColumns.has('owner_scope')) {
+                db.exec(`ALTER TABLE memories ADD COLUMN owner_scope TEXT NOT NULL DEFAULT 'global'`);
+            }
+            db.exec(`
+        UPDATE memories
+        SET owner_scope = CASE
+          WHEN visibility = 'private' AND source_agent_id IS NOT NULL AND TRIM(source_agent_id) <> '' THEN source_agent_id
+          ELSE 'global'
+        END
+        WHERE owner_scope IS NULL OR TRIM(owner_scope) = ''
+      `);
+            db.exec(`
+        DELETE FROM memories
+        WHERE id NOT IN (
+          SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY key, owner_scope
+                     ORDER BY updated_at DESC, id DESC
+                   ) AS row_num
+            FROM memories
+          )
+          WHERE row_num = 1
+        )
+      `);
+            db.exec(`DROP INDEX IF EXISTS idx_memories_key_owner_scope`);
+            db.exec(`CREATE UNIQUE INDEX idx_memories_key_owner_scope ON memories(key, owner_scope)`);
+            db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_owner_scope ON memories(owner_scope)`);
+            db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(42);
         }
         // Only stamp SCHEMA_VERSION at the end if every migration ran. Dry-run
         // skips v40 → leave schema_version at 39 so the next non-dry-run boot
@@ -880,8 +916,9 @@ export function preserveCorruptedDb(dbPath) {
 // Backup Rotation & Safe Backup
 // =============================================================================
 /**
- * Rotate existing backup files: .backup → .backup.1 → .backup.2 → .backup.3
- * Drops the oldest if rotation count exceeded. Does NOT create a new backup.
+ * Rotate existing backup files: .backup → .backup.1 → .backup.2 → .backup.3.
+ * Retains the numbered generations only; `safeBackupAsync()` then writes a new
+ * current `.backup` file. Drops the oldest generation if rotation count is exceeded.
  */
 export function rotateBackupFiles(dbPath) {
     try {
@@ -905,7 +942,8 @@ export function rotateBackupFiles(dbPath) {
 }
 /**
  * Create a WAL-safe backup using SQLite's backup API.
- * Rotates existing backups first, then writes a new .backup file.
+ * Rotates existing backups first, then writes a new `.backup` file so steady
+ * state retention is the current backup plus `BACKUP_ROTATION_COUNT` generations.
  */
 export async function safeBackupAsync(db, dbPath) {
     try {

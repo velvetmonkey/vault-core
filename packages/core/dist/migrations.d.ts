@@ -6,6 +6,10 @@
  * feedback salvage utilities.
  */
 import Database from 'better-sqlite3';
+/**
+ * Number of rotated backup generations kept alongside the current `.backup`
+ * file. Steady state retention is `.backup` plus `.backup.1`..`.backup.N`.
+ */
 export declare const BACKUP_ROTATION_COUNT = 3;
 /** High-value tables whose data should survive a corruption recovery. */
 export declare const SALVAGE_TABLES: readonly ["wikilink_feedback", "wikilink_applications", "suggestion_events", "wikilink_suppressions", "note_links", "note_link_history", "memories", "session_summaries", "corrections", "tool_selection_feedback", "prospect_ledger", "prospect_summary", "prospect_feedback"];
@@ -57,13 +61,15 @@ export declare function backupStateDb(dbPath: string): void;
 /** Preserve a corrupted database for inspection before deleting. */
 export declare function preserveCorruptedDb(dbPath: string): void;
 /**
- * Rotate existing backup files: .backup → .backup.1 → .backup.2 → .backup.3
- * Drops the oldest if rotation count exceeded. Does NOT create a new backup.
+ * Rotate existing backup files: .backup → .backup.1 → .backup.2 → .backup.3.
+ * Retains the numbered generations only; `safeBackupAsync()` then writes a new
+ * current `.backup` file. Drops the oldest generation if rotation count is exceeded.
  */
 export declare function rotateBackupFiles(dbPath: string): void;
 /**
  * Create a WAL-safe backup using SQLite's backup API.
- * Rotates existing backups first, then writes a new .backup file.
+ * Rotates existing backups first, then writes a new `.backup` file so steady
+ * state retention is the current backup plus `BACKUP_ROTATION_COUNT` generations.
  */
 export declare function safeBackupAsync(db: Database.Database, dbPath: string): Promise<boolean>;
 /**
